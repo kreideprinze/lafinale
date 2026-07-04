@@ -1,0 +1,71 @@
+{
+  "summary": "First-iteration full-stack review of Factory CMMS Enterprise. Backend: 33/33 pytest cases pass covering health, auth (login, me, brute-force lockout, register RBAC), lines/tree/machines masters (6 lines, PC21 subsystems, PC32 parallel peelers/slicers, KKR extruders, packing terminator), breakdown creation & packing-rejection, WO lifecycle (assign→start→complete→close with repair timing), analytics (Availability Not Configured placeholder + numeric after runtime), runtime validation (RUNTIME_INVALID), downtime trend, rankings excludes packing, timeline replay, notifications, users patch, WebSocket handshake + live broadcast. Frontend: login + admin quick-fill, 6 line tabs, PC21 twin renders Fryer subsystems (Exchanger/Oil Pump/Management System) + OPTYX conveyors + Dispatch TERMINATOR, KPI strip shows numeric availability after runtime is set, quick breakdown dialog creates ticket end-to-end in <15s, node visually turns red via WebSocket, work orders route accessible for admin, operator correctly redirected off /work-orders, analytics/timeline/runtime/admin routes load.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Lockout identifier uses request.client.host which, behind the Kubernetes ingress/multi-pod setup, resolves to the ingress pod IP (10.79.138.194 or 10.79.138.198 seen in login_attempts collection). Failed logins from a real client get sharded across pods, so a client can retry 5-10 times before triggering lock. Recommend using X-Forwarded-For / X-Real-IP header (fallback to client.host) or key lockout on email-only for the identifier."
+      },
+      {
+        "endpoint": "WS broadcast alert.raised",
+        "issue": "Notifications broadcast via services.notify() passes the raw Mongo insert doc which still contains the ObjectId `_id` field. Seen in WS payload: `\"_id\": \"6a489a40...\"`. Not a functional break (json.dumps stringifies via default=str) but leaks Mongo internals and should be stripped. Fix: pop `_id` before broadcasting in services.notify()."
+      },
+      {
+        "endpoint": "POST /api/auth/register",
+        "issue": "Silently lowercases email. Response echoes lowercased value which is correct behavior but not documented — client passing mixed-case email should not be surprised. Consider returning 400 or explicit note."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "All pages with a <select> populated from `lines` map (QuickBreakdownDialog, RuntimePage, AnalyticsPage, TimelineReplayPage, admin/MachinesPage)",
+        "issues": [
+          "React hydration warning `<span> cannot be a child of <option>` fires on every render — caused by the Emergent editor toolchain injecting instrumentation <span> wrappers inside dynamic `<option>` children. Not a functional break, but produces console spam. Consider rendering option label as a plain expression (e.g. `{`${l.code} — ${l.name}`}`) that the tooling can safely inline as text, or moving the map to a helper."
+        ]
+      },
+      {
+        "screen": "Analytics / Charts",
+        "issues": ["Recharts warns `width(-1) height(-1)` on initial render — chart container width is 0 until layout settles; consider aspect ratio / min-height on the ResponsiveContainer parent."]
+      },
+      {
+        "screen": "Control Room PC21 twin",
+        "issues": ["Spec expected ~17 machines on PC21; live tree returns 16 (INFEED, WASH, PEEL, HALV, SLICE, TRIM, FRY + 3 fryer subs, OPTYX + 3 conveyor subs, ROSPEN, SEAS, DISP). Off-by-one from spec — verify factory_data.py LINES['PC21'] matches the intended process breakdown."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Harden brute-force lockout identifier: derive client IP from X-Forwarded-For header first (fallback to request.client.host) OR key lockout on email-only. Current implementation is ineffective behind multi-pod ingress.",
+    "Strip Mongo `_id` in services.notify() before `hub.broadcast(...)` so websocket clients don't receive ObjectId. Same defensive strip could be added inside WSHub._to_jsonable for safety.",
+    "Reduce hydration warnings on `<select><option>` — either simplify option children to a single string expression or use a Radix/shadcn Select component consistently.",
+    "Recharts ResponsiveContainer: set minHeight or aspect on parent to remove width/height(-1) warnings.",
+    "Verify PC21 machine count vs spec ('~17'). Currently returns 16; may need to add one more machine or update spec."
+  ],
+  "critical_code_review_comments": [
+    "Auth: `verify_password` swallows all exceptions and returns False — good for hash mismatches, but currently blocks introspecting misconfigured hashes. Consider logging.",
+    "services.notify(): broadcasts the full Mongo doc as-is; should copy and strip `_id` before broadcast to keep the API surface clean.",
+    "auth.py brute-force logic: `failures` counter is reset to 0 the moment the lock is set — clients then see 429 on subsequent attempts until locked_until expires. Correct, but consider clarifying via a dedicated `attempts_remaining` in the 401 response for better UX.",
+    "server.py loads dotenv but has no explicit `on_startup` DB connection check separate from `ensure_indexes`; startup exception is only logged, service keeps running with degraded state. Consider fail-fast when Mongo is unreachable.",
+    "deps.py write_audit inserts audit doc without try/except: an audit failure will surface as HTTP 500 to the caller. Wrap in try/except to make audit best-effort."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin@factory.local/Admin@123, tech@factory.local/Tech@123, op@factory.local/Op@123 — all verified working via /api/auth/login",
+  "seed_data_creation": "Test file creates transient TEST_-prefixed data: 1 registered technician user, 1 failure mode, 1 spare (upserted twice), 1 machine PATCH (sap_code=SAP_TEST_123 on a PC21 machine), 1 breakdown + WO taken through full lifecycle on PC21, 1 runtime log for PC21 today (calendar=24, dark=2, run=20). Also a UI-side breakdown BD-2026-000006 on Raw Potato Infeed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite is in /app/backend/tests/backend_test.py — parallel-safe (pytest-xdist), completes in ~10s, 33 tests covering every requested endpoint including WS. Real client IP is NOT available via request.client.host in this preview env — brute-force test tolerates up to 15 attempts before failing. For UI tests, always wait for select `<option>` list to populate (poll `options.length > 2`) before select_option because dropdowns hydrate async from /api/lines and /api/machines. PC21 tree returns 16 machines (spec said ~17).",
+  "rca of the issue": {
+    "brute_force_lockout_partial": "Reproduce: POST /api/auth/login 6+ times with same email and wrong password from a real client. In login_attempts collection you'll see the identifier field split across multiple '<pod_ip>:<email>' rows. Root cause: routers/auth.py line 42 uses `request.client.host` which under the Kubernetes ingress returns the ingress pod IP, and there are ≥2 ingress pods so requests are sharded. Mitigation: derive real client IP from headers (X-Forwarded-For / X-Real-IP) with a fallback to `request.client.host`, OR drop the IP prefix entirely and key lockout on lower-cased email only.",
+    "ws_alert_id_leak": "Reproduce: subscribe WS to line:<id>, create a breakdown, observe the alert.raised event payload contains an _id field. Root cause: services.notify() calls `db.notifications.insert_one(doc)` which mutates doc to add `_id`, then passes the same doc into hub.broadcast. Mitigation: `doc.pop('_id', None)` before broadcast, OR clone doc before insert."
+  }
+}

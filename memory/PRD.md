@@ -27,6 +27,14 @@ Build a production-grade, SCADA-styled, centralized live CMMS + Reliability Engi
 9. Packing / Finished Product Dispatch never receive MTTR/MTBF/Availability scores.
 10. If planned runtime absent → display literal "Availability Not Configured".
 
+## Approved Modifications (2026-02-11)
+1. **LAN-only deployment** — closed factory network, no cloud dependencies, no CDN fonts, docker-compose shipped for on-prem server.
+2. **Remove all shift management** (no A/B/C shifts, no shift-based KPIs, no shift analytics).
+3. **Lightweight asset register** — only Machine Name, Line, SAP Code, Machine Type, Status, Criticality. Drop manufacturer/serial/install date/warranty.
+4. **Plant Runtime module retained** with fields: Date, Production Line, Calendar Hours, Dark Hours, Run Time. Availability driven from this; missing → "Availability Not Configured".
+5. **Operator flow ≤ 15 sec**: Select Line → Select Machine → Select Breakdown Type → Description → Submit.
+6. Architecture approved; implementation may begin.
+
 ## Implementation Status
 
 ### 2026-02-11 — Architecture drafted (no code yet)
