@@ -98,18 +98,68 @@ async def _parse_rows(raw_bytes: bytes) -> List[Dict[str, Any]]:
 
     idx_email = col(["email"])
     idx_area = col(["area of breakdown", "area"])
-    idx_equip = col(["equipment", "select equipment pc21", "select equipment pc32",
-                      "select equipment pc 36", "select equipment kkr", "select equipment twz",
-                      "select equipment bcp", "select equipment"])
+    # Per-line equipment columns (case-insensitive substring matching)
+    line_cols: Dict[str, Optional[int]] = {}
+    for line_code, tokens in [
+        ("PC21", ["select equipment pc21", "equipment pc21", "pc21"]),
+        ("PC32", ["select equipment pc32", "equipment pc32", "pc32"]),
+        ("PC36", ["select equipment pc 36", "select equipment pc36", "equipment pc 36", "pc 36", "pc36"]),
+        ("KKR",  ["select equipment kkr", "equipment kkr", "kkr"]),
+        ("TWZ",  ["select equipment twz", "equipment twz", "twz"]),
+        ("BCP",  ["select equipment bcp", "equipment bcp", "bcp"]),
+    ]:
+        line_cols[line_code] = col(tokens)
     idx_desc = col(["breakdown description", "description"])
     idx_type = col(["breakdown type", "type"])
     idx_date = col(["date of breakdown", "date"])
-    idx_start = col(["breakdown start time", "start time"])
-    idx_end = col(["breakdown end time", "end time", "completion time"])
+    idx_start = col(["breakdown start time"])
+    idx_end = col(["breakdown end time"])
     idx_action = col(["action taken"])
     idx_att = col(["attended by"])
     idx_status = col(["breakdown status", "status"])
     idx_spares = col(["spares used (sap code only)", "spares used", "spares"])
+
+    # Auto-detect a 1-column shift in the data (some Forms exports insert an unlabeled
+    # Yes/No column between "description" and "type"). Sample rows 2..6 and check if
+    # the value in idx_type column looks like Yes/No.
+    shift = 0
+    if idx_type is not None:
+        yn_hits = 0
+        checked = 0
+        for probe in ws.iter_rows(min_row=header_row_idx + 1, max_row=header_row_idx + 8, values_only=True):
+            if not probe or idx_type >= len(probe):
+                continue
+            v = probe[idx_type]
+            if v is None:
+                continue
+            checked += 1
+            if str(v).strip().lower() in ("yes", "no", "y", "n", "true", "false"):
+                yn_hits += 1
+        if checked >= 2 and yn_hits >= max(2, checked // 2):
+            shift = 1
+
+    def shifted(i):
+        if i is None:
+            return None
+        return i + shift if i is not None and i >= (idx_type or 0) else i
+
+    idx_type_s   = shifted(idx_type)
+    idx_date_s   = shifted(idx_date)
+    idx_start_s  = shifted(idx_start)
+    idx_end_s    = shifted(idx_end)
+    idx_action_s = shifted(idx_action)
+    idx_att_s    = shifted(idx_att)
+    idx_status_s = shifted(idx_status)
+    idx_spares_s = shifted(idx_spares)
+
+    def norm_line(area_val) -> Optional[str]:
+        if not area_val:
+            return None
+        n = _norm(str(area_val)).replace(" ", "")
+        for code in ("PC21", "PC32", "PC36", "KKR", "TWZ", "BCP"):
+            if code.lower() in n:
+                return code
+        return None
 
     rows = []
     for row in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
@@ -120,14 +170,30 @@ async def _parse_rows(raw_bytes: bytes) -> List[Dict[str, Any]]:
             return row[i] if (i is not None and i < len(row)) else None
 
         area = get(idx_area)
-        equip = get(idx_equip) or area
+        line_code = norm_line(area)
+
+        # Try line-specific equipment column first
+        equip = None
+        if line_code and line_cols.get(line_code) is not None:
+            equip = get(line_cols[line_code])
+        # Fallback: any non-null equipment column
+        if not equip:
+            for c_idx in line_cols.values():
+                v = get(c_idx)
+                if v:
+                    equip = v
+                    break
+        # Strip parenthetical hints like "(CNG)"
+        if equip:
+            equip = str(equip).split("(")[0].strip()
+
         desc = get(idx_desc) or ""
         if not equip and not desc:
             continue
-        d = _parse_date(get(idx_date))
-        start_iso = _parse_time_to_iso(d, get(idx_start))
-        end_iso = _parse_time_to_iso(d, get(idx_end))
-        spares_raw = str(get(idx_spares) or "")
+        d = _parse_date(get(idx_date_s))
+        start_iso = _parse_time_to_iso(d, get(idx_start_s))
+        end_iso = _parse_time_to_iso(d, get(idx_end_s))
+        spares_raw = str(get(idx_spares_s) or "")
         spares = []
         if spares_raw.strip():
             for tok in spares_raw.replace(";", ",").replace("|", ",").split(","):
@@ -138,15 +204,16 @@ async def _parse_rows(raw_bytes: bytes) -> List[Dict[str, Any]]:
         rows.append({
             "email": (get(idx_email) or "").strip() if get(idx_email) else None,
             "area": (str(area).strip() if area else None),
+            "line_code": line_code,
             "equipment": (str(equip).strip() if equip else None),
             "description": (str(desc).strip() if desc else ""),
-            "breakdown_type": _classify_type(get(idx_type)),
+            "breakdown_type": _classify_type(get(idx_type_s)),
             "date": d,
             "start_iso": start_iso,
             "end_iso": end_iso,
-            "action_taken": (str(get(idx_action) or "").strip() or None),
-            "attended_by": (str(get(idx_att) or "").strip() or None),
-            "status_text": (str(get(idx_status) or "").strip() or "closed"),
+            "action_taken": (str(get(idx_action_s) or "").strip() or None),
+            "attended_by": (str(get(idx_att_s) or "").strip() or None),
+            "status_text": (str(get(idx_status_s) or "").strip() or "closed"),
             "spares": spares,
         })
     return rows
@@ -159,30 +226,58 @@ def _row_hash(r: dict) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
-async def _match_machine(db, equipment_text: str, area_text: str | None) -> Optional[dict]:
-    text = _norm(f"{equipment_text} {area_text or ''}")
-    # exact code / name match
-    machines = await db.machines.find({}, {"_id": 0, "id": 1, "code": 1, "name": 1, "line_id": 1, "is_packing": 1}).to_list(2000)
-    # Best fuzzy: contains name; also try tokens
+async def _match_machine(db, equipment_text: str, area_text: str | None,
+                          line_code: Optional[str] = None) -> Optional[dict]:
+    text = _norm(equipment_text or "")
+    text_ns = text.replace(" ", "")
+    if not text:
+        return None
+    # If we know the line, restrict search to that line's machines
+    q = {}
+    if line_code:
+        line = await db.production_lines.find_one({"code": line_code}, {"_id": 0, "id": 1})
+        if line:
+            q["line_id"] = line["id"]
+    machines = await db.machines.find(q, {"_id": 0, "id": 1, "code": 1, "name": 1,
+                                              "line_id": 1, "is_packing": 1, "kind": 1}).to_list(500)
     scored = []
     for m in machines:
         n = _norm(m["name"])
+        n_ns = n.replace(" ", "")
         c = _norm(m["code"])
         score = 0
-        if n and n in text:
-            score = max(score, 90)
-        if c and c in text:
-            score = max(score, 95)
-        # per-token
-        for tok in n.split():
-            if len(tok) > 2 and tok in text:
-                score = max(score, 70)
+        # exact name match wins (with or without spaces)
+        if n == text or n_ns == text_ns:
+            score = 100
+        elif n and n in text:
+            score = 90
+        elif n_ns and n_ns in text_ns:
+            score = 88
+        elif text in n:
+            score = 85
+        elif c and c in text:
+            score = 80
+        else:
+            # token overlap
+            tokens_n = set(n.split())
+            tokens_t = set(text.split())
+            common = tokens_n & tokens_t
+            if common:
+                common = {t for t in common if t not in {"pc21", "pc32", "pc36", "kkr", "twz", "bcp", "stage"}}
+                if common:
+                    score = 60 + min(20, len(common) * 5)
         if score > 0:
             scored.append((score, m))
     if not scored:
         return None
     scored.sort(key=lambda x: -x[0])
-    return scored[0][1]
+    # Prefer non-stage / non-terminator on ties
+    top = scored[0][0]
+    top_choices = [m for s, m in scored if s == top]
+    for m in top_choices:
+        if m.get("kind") not in ("stage", "terminator"):
+            return m
+    return top_choices[0]
 
 
 @router.post("/breakdowns/dry-run")
@@ -200,11 +295,12 @@ async def dry_run(file: UploadFile = File(...), admin=Depends(require_admin)):
             dup_count += 1
             continue
         seen.add(h)
-        m = await _match_machine(db, r["equipment"] or "", r["area"])
+        m = await _match_machine(db, r["equipment"] or "", r["area"], r.get("line_code"))
         if m:
             matched += 1
         else:
-            unmatched.append({"equipment": r["equipment"], "area": r["area"], "date": r["date"]})
+            unmatched.append({"equipment": r["equipment"], "line": r.get("line_code"),
+                                "area": r["area"], "date": r["date"]})
     return {"ok": True, "data": {
         "total_rows": len(rows),
         "matched": matched,
@@ -227,7 +323,7 @@ async def commit(file: UploadFile = File(...), admin=Depends(require_admin)):
         if await db.breakdowns.find_one({"import_hash": h}, {"_id": 0, "id": 1}):
             skipped += 1
             continue
-        m = await _match_machine(db, r["equipment"] or "", r["area"])
+        m = await _match_machine(db, r["equipment"] or "", r["area"], r.get("line_code"))
         if not m or m.get("is_packing"):
             unmatched += 1
             continue
