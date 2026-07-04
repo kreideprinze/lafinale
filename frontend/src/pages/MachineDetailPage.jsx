@@ -2,12 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { fmtDateTime, fmtDuration, statusDot } from "../lib/format";
+import { useFilters } from "../contexts/FilterContext";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from "recharts";
 
 export default function MachineDetailPage() {
   const { id } = useParams();
+  const f = useFilters();
   const [machine, setMachine] = useState(null);
   const [kpi, setKpi] = useState(null);
   const [pareto, setPareto] = useState([]);
@@ -15,10 +17,14 @@ export default function MachineDetailPage() {
 
   useEffect(() => {
     api.get(`/machines/${id}`).then((r) => setMachine(r.data.data));
-    api.get(`/analytics/machine/${id}/kpi`).then((r) => setKpi(r.data.data));
-    api.get(`/analytics/machine/${id}/pareto?dim=failure_mode`).then((r) => setPareto(r.data.data));
+    const p = new URLSearchParams();
+    if (f.from) p.set("from", f.from);
+    if (f.to) p.set("to", f.to);
+    const qs = p.toString() ? `?${p}` : "";
+    api.get(`/analytics/machine/${id}/kpi${qs}`).then((r) => setKpi(r.data.data));
+    api.get(`/analytics/machine/${id}/pareto?dim=failure_mode${qs ? "&" + p : ""}`).then((r) => setPareto(r.data.data));
     api.get(`/analytics/machine/${id}/history?limit=25`).then((r) => setHistory(r.data.data));
-  }, [id]);
+  }, [id, f.from, f.to]);
 
   if (!machine) return <div className="p-6 text-mute mono">Loading…</div>;
 

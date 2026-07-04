@@ -1,32 +1,33 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "../lib/api";
 import { fmtDateTime, statusDot } from "../lib/format";
+import { useFilters } from "../contexts/FilterContext";
 
 export default function TimelineReplayPage() {
-  const [lines, setLines] = useState([]);
+  const f = useFilters();
   const [line, setLine] = useState(null);
   const [frames, setFrames] = useState([]);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [days, setDays] = useState(7);
   const [statusMap, setStatusMap] = useState({});
   const [machines, setMachines] = useState([]);
   const t = useRef(null);
 
   useEffect(() => {
-    api.get("/lines").then((r) => {
-      setLines(r.data.data);
-      if (r.data.data.length > 0) setLine(r.data.data[0]);
-    });
-  }, []);
+    if (f.line_id) {
+      setLine(f.lines.find((l) => l.id === f.line_id) || null);
+    } else if (f.lines.length > 0 && !line) {
+      setLine(f.lines[0]);
+    }
+  }, [f.line_id, f.lines]);
 
   useEffect(() => {
     if (!line) return;
     (async () => {
-      const to = new Date();
-      const from = new Date(to.getTime() - days * 24 * 3600 * 1000);
-      const r = await api.get(`/timeline/replay?line_id=${line.id}&from=${from.toISOString()}&to=${to.toISOString()}`);
+      const from = f.from || new Date(Date.now() - 7 * 86400_000).toISOString();
+      const to = f.to || new Date().toISOString();
+      const r = await api.get(`/timeline/replay?line_id=${line.id}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
       setFrames(r.data.data.frames);
       setIdx(0);
       setStatusMap({});
@@ -34,7 +35,7 @@ export default function TimelineReplayPage() {
       const mr = await api.get(`/machines?line_id=${line.id}`);
       setMachines(mr.data.data);
     })();
-  }, [line, days]);
+  }, [line, f.from, f.to]);
 
   useEffect(() => {
     if (!playing) { clearInterval(t.current); return; }
@@ -71,17 +72,8 @@ export default function TimelineReplayPage() {
     <div className="p-6 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="mono text-lg tracking-[0.2em]">TIMELINE REPLAY</h1>
-        <div className="flex gap-2">
-          <select className="field mono" style={{ width: 240 }} value={line?.id || ""} data-testid="tl-line"
-            onChange={(e) => setLine(lines.find(l => l.id === e.target.value))}>
-            {lines.map((l) => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}
-          </select>
-          <select className="field mono" style={{ width: 120 }} value={days} data-testid="tl-days"
-            onChange={(e) => setDays(Number(e.target.value))}>
-            <option value={1}>1 day</option>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-          </select>
+        <div className="text-xs text-mute mono">
+          Line: <span className="text-white">{line?.code || "—"}</span> · Range from global filters
         </div>
       </div>
 

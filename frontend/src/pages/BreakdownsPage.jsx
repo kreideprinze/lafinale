@@ -1,45 +1,44 @@
 import React, { useEffect, useState } from "react";
-import { api, formatApiError } from "../lib/api";
+import { api } from "../lib/api";
 import { fmtAgo, fmtDateTime, fmtDuration } from "../lib/format";
 import { live } from "../lib/ws";
 import { useNavigate } from "react-router-dom";
+import { useFilters } from "../contexts/FilterContext";
 
 export default function BreakdownsPage() {
   const [rows, setRows] = useState([]);
-  const [line, setLine] = useState("all");
-  const [lines, setLines] = useState([]);
   const [status, setStatus] = useState("all");
+  const f = useFilters();
   const nav = useNavigate();
 
   const load = async () => {
-    let q = [];
-    if (line !== "all") q.push(`line_id=${line}`);
-    if (status !== "all") q.push(`status=${status}`);
-    const r = await api.get(`/breakdowns${q.length ? "?" + q.join("&") : ""}`);
+    const p = new URLSearchParams();
+    if (f.line_id) p.set("line_id", f.line_id);
+    if (f.machine_id) p.set("machine_id", f.machine_id);
+    if (f.failure_mode_id) p.set("failure_mode_id", f.failure_mode_id);
+    if (f.from) p.set("from", f.from);
+    if (f.to) p.set("to", f.to);
+    if (status !== "all") p.set("status", status);
+    const r = await api.get(`/breakdowns?${p}`);
     setRows(r.data.data);
   };
 
-  useEffect(() => {
-    api.get("/lines").then((r) => setLines(r.data.data));
-  }, []);
-  useEffect(() => { load(); }, [line, status]);
+  useEffect(() => { load(); }, [status, f.line_id, f.machine_id, f.failure_mode_id, f.from, f.to]);
   useEffect(() => {
     const off = live.onEvent((m) => {
       if (m?.type === "event" && (m.event === "breakdown.created" || m.event === "breakdown.closed")) load();
     });
     return off;
-  }, [line, status]);
+  }, [status, f.line_id, f.machine_id, f.failure_mode_id, f.from, f.to]);
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="mono text-lg tracking-[0.2em]">BREAKDOWNS</h1>
+        <h1 className="mono text-lg tracking-[0.2em]">
+          BREAKDOWNS
+          <span className="text-mute text-xs ml-3">· {rows.length} records</span>
+        </h1>
         <div className="flex gap-2">
-          <select className="field mono" style={{ width: 220 }} value={line} data-testid="bd-flt-line"
-            onChange={(e) => setLine(e.target.value)}>
-            <option value="all">All lines</option>
-            {lines.map((l) => <option key={l.id} value={l.id}>{l.code}</option>)}
-          </select>
           <select className="field mono" style={{ width: 150 }} value={status} data-testid="bd-flt-status"
             onChange={(e) => setStatus(e.target.value)}>
             <option value="all">All statuses</option>

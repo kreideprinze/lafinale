@@ -1,52 +1,58 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { fmtDuration } from "../lib/format";
+import { useFilters } from "../contexts/FilterContext";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
 export default function AnalyticsPage() {
-  const [lines, setLines] = useState([]);
+  const f = useFilters();
   const [line, setLine] = useState(null);
   const [rankings, setRankings] = useState([]);
   const [trend, setTrend] = useState([]);
   const [pareto, setPareto] = useState([]);
-  const [days, setDays] = useState(30);
 
+  // Prefer global line filter, else first available
   useEffect(() => {
-    api.get("/lines").then((r) => {
-      setLines(r.data.data);
-      if (r.data.data.length > 0) setLine(r.data.data[0]);
-    });
-  }, []);
+    if (f.line_id) {
+      setLine(f.lines.find((l) => l.id === f.line_id) || null);
+    } else if (f.lines.length > 0 && !line) {
+      setLine(f.lines[0]);
+    }
+  }, [f.line_id, f.lines]);
 
   useEffect(() => {
     if (!line) return;
-    api.get(`/analytics/rankings?line_id=${line.id}&metric=downtime&days=${days}`).then((r) => setRankings(r.data.data));
+    const p = new URLSearchParams();
+    if (f.from) p.set("from", f.from);
+    if (f.to) p.set("to", f.to);
+    if (f.machine_id) p.set("machine_id", f.machine_id);
+    if (f.failure_mode_id) p.set("failure_mode_id", f.failure_mode_id);
+    const qs = p.toString() ? `&${p}` : "";
+    api.get(`/analytics/rankings?limit=20&line_id=${line.id}${qs}`).then((r) => setRankings(r.data.data));
+    // Trend uses `days` computed from date range
+    const days = f.from && f.to
+      ? Math.min(365, Math.max(1, Math.ceil((new Date(f.to) - new Date(f.from)) / 86400_000)))
+      : 30;
     api.get(`/analytics/line/${line.id}/downtime-trend?days=${days}`).then((r) => setTrend(r.data.data));
-    api.get(`/analytics/line/${line.id}/pareto?dim=machine`).then((r) => setPareto(r.data.data));
-  }, [line, days]);
+    const pareto_qs = new URLSearchParams();
+    if (f.from) pareto_qs.set("from", f.from);
+    if (f.to) pareto_qs.set("to", f.to);
+    api.get(`/analytics/line/${line.id}/pareto?dim=machine&${pareto_qs}`).then((r) => setPareto(r.data.data));
+  }, [line, f.from, f.to, f.machine_id, f.failure_mode_id]);
 
   return (
     <div className="p-6 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="mono text-lg tracking-[0.2em]">ANALYTICS · RELIABILITY</h1>
-        <div className="flex gap-2 items-center">
-          <select className="field mono" style={{ width: 240 }} value={line?.id || ""} data-testid="ana-line"
-            onChange={(e) => setLine(lines.find(l => l.id === e.target.value))}>
-            {lines.map((l) => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}
-          </select>
-          <select className="field mono" style={{ width: 120 }} value={days} data-testid="ana-days"
-            onChange={(e) => setDays(Number(e.target.value))}>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-          </select>
+        <div className="text-xs text-mute mono">
+          Line: <span className="text-white">{line?.code || "—"}</span> · Range from global filters
         </div>
       </div>
 
       <div className="panel">
-        <div className="panel-hd"><span>DOWNTIME TREND · {days}d</span></div>
+        <div className="panel-hd"><span>DOWNTIME TREND</span></div>
         <div className="p-3" style={{ height: 260 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trend}>

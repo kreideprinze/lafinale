@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { api } from "../lib/api";
 import { live } from "../lib/ws";
 import { useAuth } from "../contexts/AuthContext";
+import { useFilters } from "../contexts/FilterContext";
 import { fmtDuration, fmtAgo, statusClass, statusDot } from "../lib/format";
 import QuickBreakdownDialog from "../components/QuickBreakdownDialog";
 import KpiStrip from "../components/KpiStrip";
@@ -11,6 +12,7 @@ import { Plus } from "lucide-react";
 
 export default function ControlRoomPage() {
   const { user } = useAuth();
+  const f = useFilters();
   const [lines, setLines] = useState([]);
   const [activeLine, setActiveLine] = useState(null);
   const [tree, setTree] = useState(null); // {line, groups, machines}
@@ -21,9 +23,19 @@ export default function ControlRoomPage() {
   useEffect(() => {
     api.get("/lines").then((r) => {
       setLines(r.data.data);
-      if (r.data.data.length > 0) setActiveLine(r.data.data[0]);
+      // Prefer globally-selected line
+      const g = f.line_id ? r.data.data.find((l) => l.id === f.line_id) : null;
+      if (g) setActiveLine(g);
+      else if (r.data.data.length > 0 && !activeLine) setActiveLine(r.data.data[0]);
     });
   }, []);
+
+  // React to global filter line change
+  useEffect(() => {
+    if (!f.line_id) return;
+    const g = lines.find((l) => l.id === f.line_id);
+    if (g && (!activeLine || activeLine.id !== g.id)) setActiveLine(g);
+  }, [f.line_id, lines]);
 
   const loadTree = useCallback(async () => {
     if (!activeLine) return;
@@ -130,7 +142,7 @@ export default function ControlRoomPage() {
               key={l.id}
               data-testid={`line-tab-${l.code}`}
               className={`tab ${activeLine?.id === l.id ? "active" : ""}`}
-              onClick={() => setActiveLine(l)}
+              onClick={() => { setActiveLine(l); f.setLine(l.id); }}
             >
               {l.code}
             </div>

@@ -17,7 +17,9 @@ async def list_wo(
     status: Optional[str] = None,
     line_id: Optional[str] = None,
     machine_id: Optional[str] = None,
-    limit: int = Query(100, le=1000),
+    from_: Optional[str] = Query(None, alias="from"),
+    to_: Optional[str] = None,
+    limit: int = Query(500, le=5000),
     user=Depends(get_current_user),
 ):
     db = get_db()
@@ -32,6 +34,13 @@ async def list_wo(
         q["line_id"] = line_id
     if machine_id:
         q["machine_id"] = machine_id
+    if from_ or to_:
+        rng: dict = {}
+        if from_:
+            rng["$gte"] = from_
+        if to_:
+            rng["$lte"] = to_
+        q["created_at"] = rng
     items = await db.work_orders.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return {"ok": True, "data": items}
 

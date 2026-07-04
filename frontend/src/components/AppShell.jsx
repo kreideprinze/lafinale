@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { live } from "../lib/ws";
 import { api } from "../lib/api";
 import { Bell, LogOut, Zap } from "lucide-react";
+import GlobalFilterBar from "./GlobalFilterBar";
 
 const NAV_ALL = [
   { to: "/", label: "Control Room", roles: ["admin", "technician", "operator"] },
@@ -123,6 +124,8 @@ export default function AppShell({ children }) {
           </div>
         </div>
       </div>
+
+      <GlobalFilterBar />
 
       <div className="flex-1 min-h-0">{children}</div>
     </div>

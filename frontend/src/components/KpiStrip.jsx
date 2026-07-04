@@ -2,33 +2,40 @@ import React, { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { live } from "../lib/ws";
 import { fmtDuration } from "../lib/format";
+import { useFilters } from "../contexts/FilterContext";
 
 export default function KpiStrip({ lineId }) {
+  const f = useFilters();
   const [kpi, setKpi] = useState(null);
   const [openCount, setOpenCount] = useState(0);
 
+  // Use global line filter if set, else the prop lineId (from control room tab).
+  const effectiveLine = f.line_id || lineId;
+
   const load = useCallback(async () => {
-    if (!lineId) return;
-    const [k, wo] = await Promise.all([
-      api.get(`/analytics/line/${lineId}/kpi`),
-      api.get(`/work-orders?line_id=${lineId}&status=open`),
+    if (!effectiveLine) return;
+    const params = new URLSearchParams();
+    if (f.from) params.set("from", f.from);
+    if (f.to) params.set("to", f.to);
+    const qs = params.toString() ? `?${params}` : "";
+    const [k, wo2] = await Promise.all([
+      api.get(`/analytics/line/${effectiveLine}/kpi${qs}`),
+      api.get(`/work-orders?line_id=${effectiveLine}`),
     ]);
     setKpi(k.data.data);
-    // Count all not-closed WOs
-    const wo2 = await api.get(`/work-orders?line_id=${lineId}`);
     setOpenCount(wo2.data.data.filter((w) => !["closed", "cancelled"].includes(w.status)).length);
-  }, [lineId]);
+  }, [effectiveLine, f.from, f.to]);
 
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!lineId) return;
+    if (!effectiveLine) return;
     const off = live.onEvent((m) => {
-      if (m?.type === "event" && m.channel === `line:${lineId}`) load();
+      if (m?.type === "event" && m.channel === `line:${effectiveLine}`) load();
     });
     const t = setInterval(load, 30000);
     return () => { off(); clearInterval(t); };
-  }, [lineId, load]);
+  }, [effectiveLine, load]);
 
   return (
     <div className="p-3 grid grid-cols-2 gap-2" data-testid="kpi-strip">

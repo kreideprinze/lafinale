@@ -4,6 +4,7 @@ import { live } from "../lib/ws";
 import { fmtDateTime, fmtDuration, fmtAgo } from "../lib/format";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useFilters } from "../contexts/FilterContext";
 
 const TABS = [
   { key: "me", label: "My Queue" },
@@ -19,16 +20,22 @@ const STATUS_COLOR = {
 
 export default function WorkOrderQueuePage() {
   const { user } = useAuth();
+  const f = useFilters();
   const [tab, setTab] = useState(user?.role === "technician" ? "me" : "open");
   const [rows, setRows] = useState([]);
 
   const load = useCallback(async () => {
-    let q = "";
-    if (tab === "me") q = "?assigned_to=me";
-    else if (tab === "open") q = "?status=open";
-    const r = await api.get(`/work-orders${q}`);
+    const params = new URLSearchParams();
+    if (tab === "me") params.set("assigned_to", "me");
+    else if (tab === "open") params.set("status", "open");
+    if (f.line_id) params.set("line_id", f.line_id);
+    if (f.machine_id) params.set("machine_id", f.machine_id);
+    if (f.technician_id && tab !== "me") params.set("assigned_to", f.technician_id);
+    if (f.from) params.set("from", f.from);
+    if (f.to) params.set("to", f.to);
+    const r = await api.get(`/work-orders?${params}`);
     setRows(r.data.data);
-  }, [tab]);
+  }, [tab, f.line_id, f.machine_id, f.technician_id, f.from, f.to]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

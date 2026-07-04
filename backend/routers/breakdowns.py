@@ -139,7 +139,11 @@ async def list_breakdowns(
     line_id: Optional[str] = None,
     machine_id: Optional[str] = None,
     status: Optional[str] = None,
-    limit: int = Query(100, le=1000),
+    failure_mode_id: Optional[str] = None,
+    reported_by: Optional[str] = None,
+    from_: Optional[str] = Query(None, alias="from"),
+    to_: Optional[str] = None,
+    limit: int = Query(500, le=5000),
     user=Depends(get_current_user),
 ):
     db = get_db()
@@ -150,6 +154,17 @@ async def list_breakdowns(
         q["machine_id"] = machine_id
     if status:
         q["status"] = status
+    if failure_mode_id:
+        q["failure_mode_id"] = failure_mode_id
+    if reported_by:
+        q["reported_by"] = reported_by
+    if from_ or to_:
+        rng: dict = {}
+        if from_:
+            rng["$gte"] = from_
+        if to_:
+            rng["$lte"] = to_
+        q["breakdown_start_ts"] = rng
     items = await db.breakdowns.find(q, {"_id": 0}).sort("breakdown_start_ts", -1).to_list(limit)
     return {"ok": True, "data": items}
 

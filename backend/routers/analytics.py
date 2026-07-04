@@ -77,14 +77,27 @@ async def line_downtime_trend(line_id: str, days: int = 30, user=Depends(get_cur
 
 @router.get("/rankings")
 async def rankings(dim: str = "machine", metric: str = "downtime", limit: int = 20,
-                    line_id: Optional[str] = None, days: int = 30,
+                    line_id: Optional[str] = None,
+                    machine_id: Optional[str] = None,
+                    failure_mode_id: Optional[str] = None,
+                    from_: Optional[str] = Query(None, alias="from"),
+                    to_: Optional[str] = None,
+                    days: int = 30,
                     user=Depends(get_current_user)):
     """Rank machines by downtime, count, or MTTR."""
     db = get_db()
-    dt_from = datetime.now(timezone.utc) - timedelta(days=days)
-    q = {"breakdown_start_ts": {"$gte": dt_from.isoformat()}}
+    if from_:
+        dt_from = datetime.fromisoformat(from_.replace("Z", "+00:00"))
+    else:
+        dt_from = datetime.now(timezone.utc) - timedelta(days=days)
+    dt_to = datetime.fromisoformat(to_.replace("Z", "+00:00")) if to_ else datetime.now(timezone.utc)
+    q: dict = {"breakdown_start_ts": {"$gte": dt_from.isoformat(), "$lte": dt_to.isoformat()}}
     if line_id:
         q["line_id"] = line_id
+    if machine_id:
+        q["machine_id"] = machine_id
+    if failure_mode_id:
+        q["failure_mode_id"] = failure_mode_id
     bds = await db.breakdowns.find(q, {"_id": 0}).to_list(100000)
     machines = {m["id"]: m for m in await db.machines.find({"is_packing": {"$ne": True}}, {"_id": 0}).to_list(2000)}
     agg = {}
