@@ -108,6 +108,7 @@ async def notify(kind: NotificationKind, title: str, body: str, *,
         "updated_at": _now(),
     }
     await db.notifications.insert_one(doc)
+    doc.pop("_id", None)
     if user_id:
         await hub.broadcast(f"user:{user_id}", "notification.new", doc)
     if role_scope:

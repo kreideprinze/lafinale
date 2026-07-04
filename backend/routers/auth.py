@@ -38,8 +38,8 @@ def _serialize_user(u: dict) -> dict:
 async def login(req: LoginReq, request: Request, response: Response):
     db = get_db()
     email = req.email.lower().strip()
-    ip = request.client.host if request.client else "unknown"
-    ident = f"{ip}:{email}"
+    # Lock on email to be robust across multi-pod ingress (client IP is unreliable there)
+    ident = f"email:{email}"
 
     # Check lockout
     attempt = await db.login_attempts.find_one({"identifier": ident})

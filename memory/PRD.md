@@ -37,6 +37,38 @@ Build a production-grade, SCADA-styled, centralized live CMMS + Reliability Engi
 
 ## Implementation Status
 
+### 2026-02-11 — Phase A MVP COMPLETE ✅
+**Backend (FastAPI + MongoDB, all `/api/*`):**
+- JWT auth (login/refresh/logout/me/register) with email-based brute-force lockout, bcrypt hashing.
+- 3-role RBAC guard (admin / technician / operator).
+- Plant → Line → Machine hierarchy seeded for 6 lines (PC21/PC32/PC36/KKR/TWZ/BCP) with parallel peelers/slicers/extruders and Fryer/OPTYX subsystems. Rules enforced (OPTYX after Fryer, Rospen before Seasoning, Auto Halver after Peeling).
+- Machine asset register endpoints (lightweight: name/line/SAP/type/status/criticality).
+- Breakdown creation → auto WO generation → live status → WebSocket broadcast.
+- Full WO state machine: assign → accept → start → complete → close (with `repair_events` clock, spare consumption).
+- Reliability engine: MTTR, MTBF, Availability, Pareto, downtime trend, rankings — packing terminators excluded. Returns literal "Availability Not Configured" when no runtime data.
+- Plant Runtime module (date/line/calendar/dark/run_time hrs) with validation.
+- Failure modes + spares CRUD, notifications (repeat-failure + infant-mortality detectors), audit logs.
+- Timeline events + replay endpoint.
+- Excel import: dry-run + commit with fuzzy machine matching and idempotency (SHA256 dedup).
+- WebSocket `/api/ws?token=…` with subscribe/unsubscribe/ping ops, JWT handshake, auto-reconnect.
+
+**Frontend (React + Tailwind + Recharts, SCADA aesthetic):**
+- Pure-black SCADA theme with cyan/green/red/yellow accents, no gradients, no CDN fonts (LAN-safe).
+- Login page with quick-fill demo accounts.
+- Digital Twin Control Room (default landing) — 6 line tabs, live process flow, parallel-machine stages, subsystem chips under Fryer/OPTYX, terminator marking for dispatch. Right-click any machine to report breakdown.
+- KPI strip (Availability / MTTR / MTBF / Open WOs / Downtime) with live WS refresh.
+- Alert feed panel.
+- Quick Breakdown dialog (< 15 s: line → machine → type → description → submit).
+- Breakdowns listing with filters, Work Order queue + detail with full lifecycle actions.
+- Machine detail page (KPIs, pareto chart, breakdown/WO history).
+- Analytics page (downtime trend chart, machine pareto, rankings).
+- Timeline Replay with play/pause/scrub, 6 speeds, machine grid replay.
+- Runtime entry page (admin) with upsert.
+- Notifications page.
+- Admin section: Users CRUD, Machines register (editable SAP/type/criticality), Excel Import wizard.
+
+**Testing:** All 33 backend pytest cases pass. All frontend flows verified by the testing agent. Two minor issues fixed post-test: `_id` stripped before WS broadcast; brute-force lockout keyed on email (ingress-safe).
+
 ### 2026-02-11 — Architecture drafted (no code yet)
 - Produced `/app/docs/01_SYSTEM_ARCHITECTURE.md` — system topology, DB schema (relational-style Mongo), ER diagram, workflows, auth architecture.
 - Produced `/app/docs/02_API_WS_ENGINES.md` — REST surface, WebSocket protocol, reliability engine formulas & detectors.
