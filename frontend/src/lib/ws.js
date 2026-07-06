@@ -15,9 +15,17 @@ class LiveSocket {
   }
 
   _wsUrl() {
-    const httpUrl = new URL(BACKEND_URL);
-    const scheme = httpUrl.protocol === "https:" ? "wss" : "ws";
-    return `${scheme}://${httpUrl.host}/api/ws?token=${encodeURIComponent(getToken() || "")}`;
+    // If BACKEND_URL is empty, use same-origin (LAN deployment through nginx).
+    let host, scheme;
+    if (BACKEND_URL) {
+      const httpUrl = new URL(BACKEND_URL);
+      scheme = httpUrl.protocol === "https:" ? "wss" : "ws";
+      host = httpUrl.host;
+    } else {
+      scheme = window.location.protocol === "https:" ? "wss" : "ws";
+      host = window.location.host;
+    }
+    return `${scheme}://${host}/api/ws?token=${encodeURIComponent(getToken() || "")}`;
   }
 
   connect() {

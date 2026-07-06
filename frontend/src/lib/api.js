@@ -1,7 +1,9 @@
 import axios from "axios";
 
-export const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-export const API = `${BACKEND_URL}/api`;
+// Empty REACT_APP_BACKEND_URL = same-origin (LAN deployment via nginx).
+const RAW = (process.env.REACT_APP_BACKEND_URL || "").trim();
+export const BACKEND_URL = RAW.replace(/\/+$/, ""); // strip trailing /
+export const API = BACKEND_URL ? `${BACKEND_URL}/api` : "/api";
 
 const TOKEN_KEY = "cmms.access_token";
 

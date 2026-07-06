@@ -109,3 +109,21 @@ Build a production-grade, SCADA-styled, centralized live CMMS + Reliability Engi
 3. Build Phase A with parallel file creation.
 4. Seed data + Excel import.
 5. `testing_agent_v3` end-to-end before `finish`.
+
+### 2026-02-11 — Global Filter Bar + LAN Deployment Kit
+**Global Analytics Context Bar** (sticky under top nav, visible on every page):
+- Date range preset dropdown (Today / Yesterday / Last 7 / Last 30 / This Month / Previous Month / This Quarter / This Year / All Time / Custom)
+- Custom from/to date picker
+- Line, Machine (scoped to selected line), Failure Mode, Technician selectors
+- Live "ACTIVE" count badge (cyan-pulsing when > 0), Clear button
+- Persisted to `localStorage` so it survives navigation & reloads
+- All modules consume: Digital Twin, KPI strip, MTTR/MTBF/Availability, Reliability Analytics, Pareto, Machine Detail, Timeline Replay, Work Orders, Breakdowns
+- Backend endpoints (`/api/breakdowns`, `/api/work-orders`, `/api/analytics/rankings`) accept `from`, `to`, `line_id`, `machine_id`, `failure_mode_id`, `technician_id`
+- Fonts: **IBM Plex Sans / Mono** self-hosted via `@fontsource` (no CDN — LAN-safe)
+
+**LAN Deployment Kit** at `/app/deploy/`:
+- `setup.sh` — installs MongoDB 7 + Node 20 + Yarn + Nginx + Python venv, copies source to `/opt/factory-cmms`, builds React prod build to `/var/www/factory-cmms`, generates JWT secret, registers `factory-cmms-backend.service` systemd unit, configures Nginx as reverse proxy on port 80 (SPA + `/api/*` + WebSocket `/api/ws`).
+- `start.sh` / `stop.sh` — start/stop services, print auto-detected LAN IP.
+- `verify_install.sh` — 15-point health check (services, ports, HTTP endpoints, LAN reachability).
+- `.env.example` + `README.md` — full install/upgrade/backup guide.
+- Frontend uses same-origin URLs when `REACT_APP_BACKEND_URL` is empty — one URL `http://<HOST_IP>` for all users on the LAN, backend port `8001` bound to `127.0.0.1` only (hidden).
