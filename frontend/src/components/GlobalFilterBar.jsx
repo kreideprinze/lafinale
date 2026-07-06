@@ -98,7 +98,7 @@ export default function GlobalFilterBar() {
         >
           <option value="">ALL AREAS</option>
           {f.linesInScope.map((l) => (
-            <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+            <option key={l.id} value={l.id}>{l.code}</option>
           ))}
         </select>
       </FilterCell>
@@ -112,7 +112,7 @@ export default function GlobalFilterBar() {
         >
           <option value="">ALL MACHINES</option>
           {f.machinesInScope.map((m) => (
-            <option key={m.id} value={m.id}>{m.code} · {m.name}</option>
+            <option key={m.id} value={m.id}>{m.code}</option>
           ))}
         </select>
       </FilterCell>

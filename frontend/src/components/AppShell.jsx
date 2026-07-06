@@ -3,8 +3,13 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { live } from "../lib/ws";
 import { api } from "../lib/api";
-import { Bell, LogOut, Zap } from "lucide-react";
+import { Bell, LogOut, LogIn, Zap } from "lucide-react";
 import GlobalFilterBar from "./GlobalFilterBar";
+
+// Nav items visible when NOT logged in (operator kiosk mode).
+const NAV_PUBLIC = [
+  { to: "/", label: "Control Room" },
+];
 
 const NAV_ALL = [
   { to: "/", label: "Control Room", roles: ["admin", "technician", "operator"] },
@@ -35,6 +40,7 @@ export default function AppShell({ children }) {
   }, []);
 
   useEffect(() => {
+    if (!user) { setUnread(0); return; }
     let mounted = true;
     const fetchUnread = async () => {
       try {
@@ -49,11 +55,11 @@ export default function AppShell({ children }) {
     });
     const t = setInterval(fetchUnread, 60000);
     return () => { mounted = false; off(); clearInterval(t); };
-  }, []);
+  }, [user]);
 
-  if (!user) return null;
-
-  const items = NAV_ALL.filter((i) => i.roles.includes(user.role));
+  const items = user
+    ? NAV_ALL.filter((i) => i.roles.includes(user.role))
+    : NAV_PUBLIC;
 
   return (
     <div className="App min-h-screen flex flex-col">
@@ -96,31 +102,45 @@ export default function AppShell({ children }) {
                 {wsState === "open" ? "LIVE" : "OFFLINE"}
               </span>
             </span>
-            <Link to="/notifications" data-testid="topbar-notifications"
-              className="relative flex items-center gap-1 text-xs text-dim hover:text-white">
-              <Bell size={14} />
-              {unread > 0 && (
-                <span
-                  data-testid="unread-count"
-                  className="mono"
-                  style={{ color: "var(--alert)" }}
-                >{unread}</span>
-              )}
-            </Link>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-dim mono" data-testid="topbar-user">
-                {user.full_name} · {user.role.toUpperCase()}
-              </span>
-              <button
-                className="btn"
-                data-testid="btn-logout"
-                onClick={async () => { await logout(); nav("/login"); }}
-                style={{ padding: "4px 10px" }}
+            {user && (
+              <Link to="/notifications" data-testid="topbar-notifications"
+                className="relative flex items-center gap-1 text-xs text-dim hover:text-white">
+                <Bell size={14} />
+                {unread > 0 && (
+                  <span
+                    data-testid="unread-count"
+                    className="mono"
+                    style={{ color: "var(--alert)" }}
+                  >{unread}</span>
+                )}
+              </Link>
+            )}
+            {user ? (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-dim mono" data-testid="topbar-user">
+                  {user.full_name} · {user.role.toUpperCase()}
+                </span>
+                <button
+                  className="btn"
+                  data-testid="btn-logout"
+                  onClick={async () => { await logout(); nav("/"); }}
+                  style={{ padding: "4px 10px" }}
+                >
+                  <LogOut size={12} className="inline mr-1" />
+                  LOGOUT
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                data-testid="btn-maintenance-login"
+                className="text-[10px] tracking-[0.15em] uppercase text-mute hover:text-data transition-colors flex items-center gap-1"
+                style={{ letterSpacing: "0.15em" }}
               >
-                <LogOut size={12} className="inline mr-1" />
-                LOGOUT
-              </button>
-            </div>
+                <LogIn size={11} />
+                Maintenance Login
+              </Link>
+            )}
           </div>
         </div>
       </div>

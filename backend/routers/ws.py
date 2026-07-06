@@ -1,5 +1,11 @@
-"""WebSocket router — JWT-authenticated live channel."""
+"""WebSocket router — supports both authenticated and public (kiosk) connections.
+
+Authenticated users (with valid JWT via ?token=) get user/role-scoped channels.
+Anonymous connections (no token) get a public read-only channel — used for the
+operator kiosk view of the Control Room.
+"""
 import json
+from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from security import decode_token_safe
 from ws_hub import hub
@@ -9,24 +15,25 @@ router = APIRouter(tags=["ws"])
 
 
 @router.websocket("/api/ws")
-async def ws_endpoint(websocket: WebSocket, token: str = Query(...)):
-    payload = decode_token_safe(token)
-    if not payload or payload.get("type") != "access":
-        await websocket.close(code=4401)
-        return
-    user_id = payload["sub"]
-    role = payload.get("role", "operator")
+async def ws_endpoint(websocket: WebSocket, token: Optional[str] = Query(None)):
+    user_id: Optional[str] = None
+    role: str = "public"
 
-    db = get_db()
-    user = await db.users.find_one({"id": user_id}, {"_id": 0})
-    if not user or not user.get("active", True):
-        await websocket.close(code=4401)
-        return
+    if token:
+        payload = decode_token_safe(token)
+        if payload and payload.get("type") == "access":
+            db = get_db()
+            u = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+            if u and u.get("active", True):
+                user_id = u["id"]
+                role = u.get("role", "operator")
 
     await websocket.accept()
-    # Default channels
-    await hub.subscribe(websocket, f"user:{user_id}")
-    await hub.subscribe(websocket, f"role:{role}")
+    if user_id:
+        await hub.subscribe(websocket, f"user:{user_id}")
+        await hub.subscribe(websocket, f"role:{role}")
+    else:
+        await hub.subscribe(websocket, "public")
     await hub.send_direct(websocket, {"type": "hello", "user_id": user_id, "role": role})
 
     try:

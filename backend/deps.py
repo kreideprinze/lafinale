@@ -31,6 +31,26 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
+async def get_current_user_optional(request: Request) -> Optional[dict]:
+    """Same as get_current_user but returns None instead of raising when unauthenticated.
+
+    Used for operator-facing read endpoints (Control Room active lists) and
+    for endpoints where authenticated users get enriched context but public
+    access is still allowed on the LAN.
+    """
+    token = await _extract_token(request)
+    if not token:
+        return None
+    payload = decode_token_safe(token)
+    if not payload or payload.get("type") != "access":
+        return None
+    db = get_db()
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    if not user or not user.get("active", True):
+        return None
+    return user
+
+
 def require_role(*allowed: str) -> Callable:
     async def _guard(user: dict = Depends(get_current_user)):
         if user.get("role") not in allowed:

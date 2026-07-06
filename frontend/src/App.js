@@ -43,11 +43,12 @@ export default function App() {
           <Toaster theme="dark" position="top-right" />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<RequireAuth><Shell><ControlRoomPage /></Shell></RequireAuth>} />
+            {/* Public operator kiosk — Control Room is accessible without login */}
+            <Route path="/" element={<Shell><ControlRoomPage /></Shell>} />
             <Route path="/breakdowns" element={<RequireAuth><Shell><BreakdownsPage /></Shell></RequireAuth>} />
             <Route path="/work-orders" element={<RequireAuth roles={["admin", "technician"]}><Shell><WorkOrderQueuePage /></Shell></RequireAuth>} />
             <Route path="/work-orders/:id" element={<RequireAuth><Shell><WorkOrderDetailPage /></Shell></RequireAuth>} />
-            <Route path="/machine/:id" element={<RequireAuth><Shell><MachineDetailPage /></Shell></RequireAuth>} />
+            <Route path="/machine/:id" element={<Shell><MachineDetailPage /></Shell>} />
             <Route path="/analytics" element={<RequireAuth roles={["admin", "technician"]}><Shell><AnalyticsPage /></Shell></RequireAuth>} />
             <Route path="/timeline" element={<RequireAuth roles={["admin", "technician"]}><Shell><TimelineReplayPage /></Shell></RequireAuth>} />
             <Route path="/runtime" element={<RequireAuth roles={["admin"]}><Shell><RuntimePage /></Shell></RequireAuth>} />

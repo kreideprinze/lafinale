@@ -477,3 +477,103 @@ body {
   0%, 100% { box-shadow: 0 0 0 rgba(34, 211, 238, 0); }
   50% { box-shadow: 0 0 6px rgba(34, 211, 238, 0.5); }
 }
+
+/* ----- Control Room sidebar ----- */
+.sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  min-height: 0;
+  flex: 1;
+}
+.sidebar-panel:last-child { border-bottom: none; }
+.sidebar-panel-hd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--text-mute);
+  background: rgba(255, 255, 255, 0.015);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.sidebar-panel-body {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+.sidebar-empty {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--text-mute);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.sidebar-row {
+  padding: 8px 12px;
+  border-bottom: 1px solid #141414;
+  cursor: pointer;
+  transition: background 120ms ease, border-left-color 120ms ease;
+  border-left: 2px solid transparent;
+}
+.sidebar-row:hover {
+  background: rgba(34, 211, 238, 0.05);
+  border-left-color: var(--data);
+}
+.sidebar-row:last-child { border-bottom: none; }
+
+/* ----- tiny chips for compact sidebar ----- */
+.chip-tiny {
+  padding: 1px 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.chip-tiny-danger { border-color: var(--danger); color: var(--danger); }
+.chip-tiny-warn   { border-color: var(--warn);   color: var(--warn); }
+.chip-tiny-info   { border-color: var(--data);   color: var(--data); }
+.chip-tiny-muted  { border-color: var(--border-strong); color: var(--text-mute); }
+
+/* ----- machine highlight when jumped-to from sidebar ----- */
+.node-highlighted {
+  outline: 2px solid var(--data);
+  outline-offset: 2px;
+  animation: node-pulse 1.2s ease-in-out 2;
+}
+@keyframes node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.6); }
+  50%       { box-shadow: 0 0 0 8px rgba(34, 211, 238, 0); }
+}
+
+/* ----- report button that appears on machine card ----- */
+.node-report-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: var(--danger);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  cursor: pointer;
+}
+.node:hover .node-report-btn { opacity: 1; }
+.node-report-btn:hover { background: rgba(239, 68, 68, 0.25); }
+

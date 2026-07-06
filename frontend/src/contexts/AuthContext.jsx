@@ -27,11 +27,12 @@ export function AuthProvider({ children }) {
   useEffect(() => { check(); }, []);
 
   useEffect(() => {
-    if (user && user.id) {
-      live.connect();
-      return () => live.disconnect();
-    }
-  }, [user && user.id]);
+    // Connect WS as soon as we know whether the user is authed or not (loading finished).
+    // Authenticated users get user/role channels; guests get the public channel.
+    if (loading) return;
+    live.connect();
+    return () => live.disconnect();
+  }, [loading, user && user.id]);
 
   const login = async (email, password) => {
     const r = await api.post("/auth/login", { email, password });

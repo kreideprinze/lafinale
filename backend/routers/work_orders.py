@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from db import get_db
 from models import (WOAssignReq, WOCompleteReq, WOStatus, BreakdownStatus,
                        MachineStatus, uid, now_utc)
-from deps import get_current_user, require_admin_or_tech, require_admin, write_audit
+from deps import get_current_user, get_current_user_optional, require_admin_or_tech, require_admin, write_audit
 from services import emit_timeline, set_machine_status
 
 router = APIRouter(prefix="/api/work-orders", tags=["work_orders"])
@@ -18,21 +18,26 @@ async def list_wo(
     status: Optional[str] = None,
     line_id: Optional[str] = None,
     machine_id: Optional[str] = None,
+    active_only: bool = False,
     from_: Optional[str] = Query(None, alias="from"),
     to_: Optional[str] = None,
     limit: int = Query(500, le=5000),
-    user=Depends(get_current_user),
+    user=Depends(get_current_user_optional),
 ):
     db = get_db()
     q = {}
     if department:
         q["department"] = department
     if assigned_to == "me":
+        if not user:
+            return {"ok": True, "data": []}
         q["assigned_to"] = user["id"]
     elif assigned_to:
         q["assigned_to"] = assigned_to
     if status:
         q["status"] = status
+    if active_only:
+        q["status"] = {"$nin": [WOStatus.closed.value, WOStatus.cancelled.value]}
     if line_id:
         q["line_id"] = line_id
     if machine_id:
@@ -49,7 +54,7 @@ async def list_wo(
 
 
 @router.get("/{wo_id}")
-async def get_wo(wo_id: str, user=Depends(get_current_user)):
+async def get_wo(wo_id: str, user=Depends(get_current_user_optional)):
     db = get_db()
     wo = await db.work_orders.find_one({"id": wo_id}, {"_id": 0})
     if not wo:

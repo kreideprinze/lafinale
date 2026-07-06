@@ -31,9 +31,15 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
-      setToken(null);
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+      // Only clear + redirect if the user thought they were logged in (had a token).
+      // Guests hitting protected endpoints (kiosk mode) get 401 but stay on the
+      // public page — the calling component swallows the error.
+      const hadToken = !!getToken();
+      if (hadToken) {
+        setToken(null);
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
       }
     }
     return Promise.reject(err);

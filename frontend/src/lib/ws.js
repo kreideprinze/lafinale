@@ -31,8 +31,6 @@ class LiveSocket {
   connect() {
     this.desired = true;
     if (this.ws && (this.ws.readyState === 0 || this.ws.readyState === 1)) return;
-    const tok = getToken();
-    if (!tok) return;
     try {
       this.ws = new WebSocket(this._wsUrl());
     } catch {

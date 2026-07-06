@@ -3,15 +3,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from db import get_db
 from models import MachineCreateReq, MachineUpdateReq, uid, now_utc
-from deps import get_current_user, require_admin, write_audit
+from deps import get_current_user, get_current_user_optional, require_admin, write_audit
 
 router = APIRouter(prefix="/api", tags=["masters"])
 
 
 # -------- Departments --------
 @router.get("/departments")
-async def list_departments(user=Depends(get_current_user)):
-    """Aggregate departments actually present in production_lines."""
+async def list_departments(user=Depends(get_current_user_optional)):
+    """Aggregate departments actually present in production_lines. Public read."""
     db = get_db()
     codes = await db.production_lines.distinct("department")
     labels = {"process": "Process", "packaging": "Packaging", "utilities": "Utilities"}
@@ -22,7 +22,7 @@ async def list_departments(user=Depends(get_current_user)):
 
 # -------- Plants --------
 @router.get("/plants")
-async def list_plants(user=Depends(get_current_user)):
+async def list_plants(user=Depends(get_current_user_optional)):
     db = get_db()
     plants = await db.plants.find({}, {"_id": 0}).sort("created_at", 1).to_list(50)
     return {"ok": True, "data": plants}
@@ -32,7 +32,7 @@ async def list_plants(user=Depends(get_current_user)):
 @router.get("/lines")
 async def list_lines(plant_id: Optional[str] = None,
                       department: Optional[str] = None,
-                      user=Depends(get_current_user)):
+                      user=Depends(get_current_user_optional)):
     db = get_db()
     q: dict = {}
     if plant_id:
@@ -44,8 +44,8 @@ async def list_lines(plant_id: Optional[str] = None,
 
 
 @router.get("/lines/{line_id}/tree")
-async def line_tree(line_id: str, user=Depends(get_current_user)):
-    """Return line with groups + machines + subsystems + live status for the twin."""
+async def line_tree(line_id: str, user=Depends(get_current_user_optional)):
+    """Return line with groups + machines + subsystems + live status for the twin. Public read."""
     db = get_db()
     line = await db.production_lines.find_one({"id": line_id}, {"_id": 0})
     if not line:
@@ -67,7 +67,7 @@ async def line_tree(line_id: str, user=Depends(get_current_user)):
 @router.get("/machines")
 async def list_machines(line_id: Optional[str] = None,
                          department: Optional[str] = None,
-                         user=Depends(get_current_user)):
+                         user=Depends(get_current_user_optional)):
     db = get_db()
     q: dict = {}
     if line_id:
@@ -79,7 +79,7 @@ async def list_machines(line_id: Optional[str] = None,
 
 
 @router.get("/machines/{machine_id}")
-async def get_machine(machine_id: str, user=Depends(get_current_user)):
+async def get_machine(machine_id: str, user=Depends(get_current_user_optional)):
     db = get_db()
     m = await db.machines.find_one({"id": machine_id}, {"_id": 0})
     if not m:

@@ -89,6 +89,8 @@ class Severity(str, Enum):
 class BreakdownType(str, Enum):
     mechanical = "mechanical"
     electrical = "electrical"
+    control = "control"
+    # legacy values retained for backwards-compatibility with historical imports
     process = "process"
     instrumentation = "instrumentation"
     utility = "utility"
@@ -277,11 +279,22 @@ class Breakdown(BaseDoc):
 class BreakdownCreateReq(BaseModel):
     line_id: str
     machine_id: str
-    breakdown_type: BreakdownType = BreakdownType.other
+    breakdown_type: BreakdownType = BreakdownType.mechanical
     description: str
     severity: Optional[Severity] = None
     failure_mode_id: Optional[str] = None
     breakdown_start_ts: Optional[datetime] = None
+    reporter_name: Optional[str] = None
+    auto_create_work_order: bool = True
+
+
+class PublicBreakdownReportReq(BaseModel):
+    """Operator-facing breakdown report — no auth required."""
+    machine_id: str
+    reporter_name: str = Field(..., min_length=1, max_length=80)
+    breakdown_type: BreakdownType = BreakdownType.mechanical
+    description: str
+    auto_create_work_order: bool = True
 
 
 # ---------------- WORK ORDER ----------------
