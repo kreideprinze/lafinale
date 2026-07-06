@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { fmtDuration } from "../lib/format";
 import { useFilters } from "../contexts/FilterContext";
+import PersonnelPanel from "../components/PersonnelPanel";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -10,6 +11,7 @@ const DEPT_LABEL = { process: "Process", packaging: "Packaging", utilities: "Uti
 
 export default function AnalyticsPage() {
   const f = useFilters();
+  const [tab, setTab] = useState("reliability");
   const [line, setLine] = useState(null);
   const [rankings, setRankings] = useState([]);
   const [trend, setTrend] = useState([]);
@@ -66,6 +68,23 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Analytics tabs */}
+      <div className="tab-strip">
+        <div
+          className={`tab ${tab === "reliability" ? "active" : ""}`}
+          data-testid="ana-tab-reliability"
+          onClick={() => setTab("reliability")}
+        >RELIABILITY</div>
+        <div
+          className={`tab ${tab === "personnel" ? "active" : ""}`}
+          data-testid="ana-tab-personnel"
+          onClick={() => setTab("personnel")}
+        >PERSONNEL</div>
+      </div>
+
+      {tab === "personnel" && <PersonnelPanel />}
+
+      {tab === "reliability" && <>
       {deptKpi && (
         <div className="panel" data-testid="ana-dept-kpi">
           <div className="panel-hd">
@@ -161,6 +180,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+      </>}
     </div>
   );
 }

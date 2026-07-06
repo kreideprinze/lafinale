@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 4 exhaustively covered the five new workstreams (Personnel analytics, Branding, WO edit, Admin data-ops, Deployment scripts). Backend: 41/41 pytest cases pass (20 legacy from iter_2 + 21 new). UI: every requested test-id present and functional, including logo upload flow, WO edit dialog + role gating, System confirm-modal semantics, and Analytics tab switch. Deploy scripts (verify_install.py exit 0, migrate.py idempotent second-run, backup.sh produces tar.gz, restore.sh executable) all validated. Destructive endpoints were exercised safely (seed_demo run twice for idempotency; wipe-* validated only for auth-gating).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/analytics/personnel?department=<unknown>", "issue": "No validation of the department parameter — arbitrary strings return an empty subset with status 200 (consistent with prior /api/analytics/department/{d}/kpi behaviour, not a new bug)."},
+      {"endpoint": "PATCH /api/work-orders/{id}", "issue": "response_time_seconds is computed from assigned_at → repair_started_at inside the PATCH recomputation, whereas /work-orders/{id}/start computes it from assigned_at → now(). Semantics are slightly different (response = time to accept vs time to start). Not a regression, but worth harmonising."},
+      {"endpoint": "POST /api/settings/branding/logo (multipart)", "issue": "MIME type is not verified — the extension check on the filename is trusted (e.g. a .txt renamed logo.png would still be accepted). Given the file is only served back as static content, low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global Filter Bar", "issues": ["Recurring React hydration warning `<span> cannot be a child of <option>` — persistent from iterations 1 & 2, caused by editor-tooling instrumentation spans injected inside dynamic <option> children. Non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: harmonise the definition of response_time_seconds between /start and PATCH edit (both should measure assigned→started).",
+    "OPTIONAL: reject unknown department values in /api/analytics/personnel and /api/analytics/department/{d}/kpi with 400 UNKNOWN_DEPARTMENT.",
+    "OPTIONAL: verify the uploaded logo's real MIME (e.g. via magic-byte sniff) in POST /api/settings/branding/logo — not just the filename extension.",
+    "OPTIONAL: address the long-standing <option>/<span> hydration warning coming from editor tooling."
+  ],
+  "critical_code_review_comments": [
+    "backend/routers/personnel.py:23 — /api/analytics/personnel filters by date via string comparison ($gte/$lte on ISO strings). Works because the codebase stores UTC ISO-8601 strings, but if any legacy row ever lacks a timezone suffix (`Z` / `+00:00`) it will sort incorrectly. Consider a small sanitisation pass in migrate.py.",
+    "backend/routers/settings.py:57 — update_branding raises 400 if `len(updates) == 1` (only `updated_at`), which is correct, but the message ‘no fields provided’ collides with the same message pattern elsewhere; use a coded error like BRAND_NO_FIELDS.",
+    "backend/routers/settings.py:107 — the upload handler removes prior logo files before writing the new one; if the write fails halfway the admin ends up with neither. Wrap in try/except and only unlink after successful write.",
+    "backend/routers/settings.py:147 — GET /api/settings/branding/logo returns FileResponse without a Cache-Control header; the frontend cache-busts via ?v=<logo_updated_at> so this is fine, but adding `Cache-Control: no-cache` server-side would be more robust.",
+    "backend/routers/work_orders.py:263 — edit_wo accepts a raw `dict` for the body; any unknown key is silently ignored. A Pydantic model (WOEditReq) would be safer and self-document via OpenAPI.",
+    "backend/routers/work_orders.py:311 — Derived durations are recomputed only if ALL two anchors are set. If the admin *clears* one timestamp (sends null), the stale derived value stays. Consider unset derived fields when their anchor becomes null.",
+    "backend/routers/admin_ops.py:47 — wipe_transactional does not include `repair_events` (which is a transactional log). Consider adding it.",
+    "backend/seed.py:14 — seed_admin also seeds tech + operator when the corresponding env vars are set. Fine, but the docstring says \"admin user\" — update it to mention tech/op.",
+    "frontend/src/components/Brand.jsx:26 — `useEffect` depends on `[]`; the component fires an initial GET on every mount. Multiple <Brand /> instances (AppShell + LoginPage after a nav) can each fetch. A tiny global cache or React-Query would eliminate duplicate calls.",
+    "frontend/src/pages/WorkOrderDetailPage.jsx:63 — wo-edit-btn is rendered for any user whose role is admin OR technician; the backend also enforces this, but a technician can currently edit ANY work order, not only the ones assigned to them. Confirm with product whether that's the intended scope.",
+    "frontend/src/pages/admin/SystemPage.jsx:44 — after doAction(), even destructive results (wipe-*) show only counts; no confirmation is included telling the user WHICH collections were touched — copy `title` from pendingAction into the toast for clarity.",
+    "frontend/src/components/PersonnelPanel.jsx:16 — the `useEffect` triggers a fetch on every filter change but has no abort/debounce; rapid filter changes create in-flight races."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (appended iteration-4 test classes: TestPersonnelAnalytics, TestBranding, TestWorkOrderPatch, TestAdminDataOps)"
+  ],
+  "success_rate": {"backend": "100% (41/41)", "frontend": "100% (every requested test-id / flow verified)"},
+  "test_credentials": "admin@factory.local / Admin@123, tech@factory.local / Tech@123, op@factory.local / Op@123 — all verified via /api/auth/login.",
+  "seed_data_creation": "Iteration-4 tests create/upload a 1x1 PNG logo through the admin API and then delete it; write a `Factory CMMS TEST` company name and restore original; run seed-demo idempotently. No lingering test data. UI cleanup deletes the uploaded logo at the end of the Playwright run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend suite at /app/backend/tests/backend_test.py now contains 41 tests across 9 classes, runs in ~5s under -n 2. Requires REACT_APP_BACKEND_URL env var. To keep the preview DB safe, wipe-transactional / wipe-demo are ONLY tested for auth-gating; do NOT call them destructively. seed-demo is idempotent (asserted). WO PATCH tests intentionally target a `closed` WO to avoid perturbing the assign→start→complete lifecycle. Branding logo upload uses pure Python PNG bytes — no PIL/pillow needed. TestBranding.test_put_updates_name_and_color restores the original company_name/primary_color at the end so subsequent runs of PersonnelPanel/System page snapshots stay stable. The recurring `<span> cannot be a child of <option>` hydration warning in the console is editor-tooling instrumentation from GlobalFilterBar, unchanged since iter 1 & 2.",
+  "rca of the issue": "N/A — no blocking bugs found. All 17 iteration-4 acceptance bullets validated. The three ‘minor’ backend items above are semantic polish opportunities, not defects."
+}

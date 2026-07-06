@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { formatApiError } from "../lib/api";
-import { Zap } from "lucide-react";
+import Brand from "../components/Brand";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -34,8 +34,7 @@ export default function LoginPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl w-full">
         <div className="flex flex-col justify-center">
           <div className="flex items-center gap-3 mb-6">
-            <Zap size={22} className="text-data" />
-            <span className="mono tracking-[0.25em] text-lg">FACTORY CMMS</span>
+            <Brand iconSize={22} />
           </div>
           <h1 className="text-4xl sm:text-5xl font-normal leading-tight mb-4">
             Industrial Maintenance<br />

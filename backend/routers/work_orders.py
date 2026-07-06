@@ -233,3 +233,92 @@ def _delta(a, b) -> int:
     ta = _dt.fromisoformat(str(a).replace("Z", "+00:00"))
     tb = _dt.fromisoformat(str(b).replace("Z", "+00:00"))
     return max(0, int((tb - ta).total_seconds()))
+
+
+
+# --------------- Edit WO (admin + technician) ---------------
+
+# Fields the editor is allowed to modify (created_at is NOT here — audit-preserved)
+_EDITABLE_TS_FIELDS = {
+    "assigned_at",
+    "accepted_at",
+    "repair_started_at",
+    "repair_completed_at",
+    "closed_at",
+}
+_VALID_PRIORITIES = {"p1", "p2", "p3", "p4"}
+
+
+def _parse_iso(s):
+    from datetime import datetime as _dt
+    if s is None or s == "":
+        return None
+    try:
+        _dt.fromisoformat(str(s).replace("Z", "+00:00"))
+        return s
+    except ValueError:
+        return "INVALID"
+
+
+@router.patch("/{wo_id}")
+async def edit_wo(wo_id: str, req: dict, user=Depends(require_admin_or_tech)):
+    """Edit priority and timestamps on a work order.
+
+    Body: any subset of { priority, assigned_at, accepted_at,
+      repair_started_at, repair_completed_at, closed_at }.
+    Timestamps must be ISO-8601 strings (or null to clear).
+    Recomputes response_time_seconds / repair_time_seconds / close_time_seconds
+    from the resulting values.
+    """
+    db = get_db()
+    wo = await db.work_orders.find_one({"id": wo_id}, {"_id": 0})
+    if not wo:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    updates: dict = {}
+
+    if "priority" in req:
+        p = req["priority"]
+        if p not in _VALID_PRIORITIES:
+            raise HTTPException(status_code=400, detail={
+                "code": "WO_INVALID_PRIORITY",
+                "message": f"priority must be one of {sorted(_VALID_PRIORITIES)}",
+            })
+        updates["priority"] = p
+
+    for field in _EDITABLE_TS_FIELDS:
+        if field in req:
+            parsed = _parse_iso(req[field])
+            if parsed == "INVALID":
+                raise HTTPException(status_code=400, detail={
+                    "code": "WO_INVALID_TIMESTAMP",
+                    "field": field, "value": req[field],
+                })
+            updates[field] = parsed  # may be None (clear the field)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+
+    # Apply
+    now = now_utc().isoformat()
+    updates["updated_at"] = now
+    updates["updated_by"] = user["id"]
+    await db.work_orders.update_one({"id": wo_id}, {"$set": updates})
+
+    # Recompute derived durations
+    wo2 = await db.work_orders.find_one({"id": wo_id}, {"_id": 0})
+    derived: dict = {}
+    if wo2.get("assigned_at") and wo2.get("repair_started_at"):
+        derived["response_time_seconds"] = _delta(wo2["assigned_at"], wo2["repair_started_at"])
+    if wo2.get("repair_started_at") and wo2.get("repair_completed_at"):
+        derived["repair_time_seconds"] = _delta(wo2["repair_started_at"], wo2["repair_completed_at"])
+    if wo2.get("assigned_at") and wo2.get("closed_at"):
+        derived["close_time_seconds"] = _delta(wo2["assigned_at"], wo2["closed_at"])
+    if derived:
+        await db.work_orders.update_one({"id": wo_id}, {"$set": derived})
+        wo2.update(derived)
+
+    await _emit_wo_event(wo2, "wo.edited", user["id"], {"fields": list(updates.keys())})
+    await write_audit(user["id"], "wo.edit", "work_order", wo_id,
+                        before={k: wo.get(k) for k in updates.keys()}, after=updates)
+    return {"ok": True, "data": wo2}

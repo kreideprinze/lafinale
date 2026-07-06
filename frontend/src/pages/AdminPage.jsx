@@ -5,6 +5,8 @@ import MachinesPage from "./admin/MachinesPage";
 import ImportPage from "./admin/ImportPage";
 import RuntimeImportPage from "./admin/RuntimeImportPage";
 import DepartmentsPage from "./admin/DepartmentsPage";
+import BrandingPage from "./admin/BrandingPage";
+import SystemPage from "./admin/SystemPage";
 
 const TABS = [
   { to: "/admin/departments", label: "Departments" },
@@ -12,6 +14,8 @@ const TABS = [
   { to: "/admin/machines", label: "Machines" },
   { to: "/admin/import", label: "Import Excel" },
   { to: "/admin/runtime-import", label: "Import Runtime" },
+  { to: "/admin/branding", label: "Branding" },
+  { to: "/admin/system", label: "System" },
 ];
 
 export default function AdminPage() {
@@ -32,6 +36,8 @@ export default function AdminPage() {
         <Route path="machines" element={<MachinesPage />} />
         <Route path="import" element={<ImportPage />} />
         <Route path="runtime-import" element={<RuntimeImportPage />} />
+        <Route path="branding" element={<BrandingPage />} />
+        <Route path="system" element={<SystemPage />} />
         <Route index element={<DepartmentsPage />} />
       </Routes>
     </div>

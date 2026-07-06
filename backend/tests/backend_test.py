@@ -313,3 +313,312 @@ class TestBreakdownsFilter:
         # sums should not exceed all (they're subsets)
         assert n_p <= n_all
         assert n_k <= n_all
+
+
+
+# =====================================================================
+# ITERATION 4 — new coverage
+#   * Personnel analytics
+#   * Branding GET/PUT + logo upload/download/delete
+#   * Work-order PATCH (priority + timestamps, role checks)
+#   * Admin data-ops (data-summary, seed-demo, wipe-transactional round-trip)
+# =====================================================================
+
+TECH_EMAIL = "tech@factory.local"
+TECH_PASS = "Tech@123"
+OP_EMAIL = "op@factory.local"
+OP_PASS = "Op@123"
+
+
+def _login_session(email: str, password: str) -> requests.Session:
+    s = requests.Session()
+    s.headers.update({"Content-Type": "application/json"})
+    r = s.post(f"{BASE_URL}/api/auth/login", json={"email": email, "password": password})
+    if r.status_code != 200:
+        return None
+    tok = r.json().get("access_token") or r.json().get("token")
+    if tok:
+        s.headers.update({"Authorization": f"Bearer {tok}"})
+    return s
+
+
+@pytest.fixture(scope="session")
+def tech_session():
+    s = _login_session(TECH_EMAIL, TECH_PASS)
+    if s is None:
+        pytest.skip("Technician login failed")
+    return s
+
+
+@pytest.fixture(scope="session")
+def op_session():
+    s = _login_session(OP_EMAIL, OP_PASS)
+    if s is None:
+        pytest.skip("Operator login failed")
+    return s
+
+
+# ---------------- Personnel Analytics ----------------
+class TestPersonnelAnalytics:
+    def test_requires_auth(self):
+        r = requests.get(f"{BASE_URL}/api/analytics/personnel")
+        assert r.status_code in (401, 403)
+
+    def test_shape(self, admin_session):
+        r = admin_session.get(f"{BASE_URL}/api/analytics/personnel")
+        assert r.status_code == 200, r.text
+        data = r.json()["data"]
+        for k in ("reporters", "technicians", "top"):
+            assert k in data
+        assert isinstance(data["reporters"], list)
+        assert isinstance(data["technicians"], list)
+        top = data["top"]
+        for k in ("most_active_reporter", "most_active_technician",
+                  "fastest_technician", "slowest_technician"):
+            assert k in top
+
+        for r_row in data["reporters"]:
+            assert "name" in r_row and "breakdowns_reported" in r_row
+        for t in data["technicians"]:
+            for k in ("user_id", "name", "work_orders_completed",
+                      "total_repair_seconds", "avg_repair_seconds", "avg_response_seconds"):
+                assert k in t, f"technician row missing {k}: {t}"
+
+    def test_filter_reduces_rows(self, admin_session):
+        r_all = admin_session.get(f"{BASE_URL}/api/analytics/personnel").json()["data"]
+        # from/to way in the future should yield empty subsets
+        r_fut = admin_session.get(
+            f"{BASE_URL}/api/analytics/personnel?from=2099-01-01T00:00:00Z&to=2099-12-31T00:00:00Z"
+        ).json()["data"]
+        assert len(r_fut["reporters"]) <= len(r_all["reporters"])
+        assert len(r_fut["technicians"]) <= len(r_all["technicians"])
+
+        r_dept = admin_session.get(
+            f"{BASE_URL}/api/analytics/personnel?department=process"
+        ).json()["data"]
+        assert len(r_dept["technicians"]) <= len(r_all["technicians"])
+
+
+# ---------------- Branding ----------------
+class TestBranding:
+    def test_get_branding_public(self):
+        r = requests.get(f"{BASE_URL}/api/settings/branding")
+        assert r.status_code == 200
+        data = r.json()["data"]
+        for k in ("company_name", "primary_color", "has_logo", "logo_ext", "logo_updated_at"):
+            assert k in data
+
+    def test_put_requires_admin(self, op_session):
+        # form-encoded PUT as operator → 403
+        r = op_session.put(
+            f"{BASE_URL}/api/settings/branding",
+            data={"company_name": "HACK"},
+            headers={"Content-Type": None},
+        )
+        assert r.status_code in (401, 403), r.text
+
+    def test_put_updates_name_and_color(self, admin_session):
+        original = admin_session.get(f"{BASE_URL}/api/settings/branding").json()["data"]
+        new_name = "Factory CMMS TEST"
+        new_color = "#22d3ee"
+        r = admin_session.put(
+            f"{BASE_URL}/api/settings/branding",
+            data={"company_name": new_name, "primary_color": new_color},
+            headers={"Content-Type": None},
+        )
+        assert r.status_code == 200, r.text
+        got = admin_session.get(f"{BASE_URL}/api/settings/branding").json()["data"]
+        assert got["company_name"] == new_name
+        assert got["primary_color"].lower() == new_color.lower()
+        # restore
+        admin_session.put(
+            f"{BASE_URL}/api/settings/branding",
+            data={
+                "company_name": original.get("company_name") or "Factory CMMS",
+                "primary_color": original.get("primary_color") or "#22d3ee",
+            },
+            headers={"Content-Type": None},
+        )
+
+    def test_put_invalid_color(self, admin_session):
+        r = admin_session.put(
+            f"{BASE_URL}/api/settings/branding",
+            data={"primary_color": "not-a-hex"},
+            headers={"Content-Type": None},
+        )
+        assert r.status_code == 400
+
+    def _tiny_png_bytes(self):
+        # 1x1 red PNG (pure bytes; no PIL required)
+        return bytes.fromhex(
+            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+            "89000000164944415478da62f8cfc0f09f81010c0c02000000ffff0300060005"
+            "032c19ba470000000049454e44ae426082"
+        )
+
+    def test_logo_upload_download_delete(self, admin_session):
+        png = self._tiny_png_bytes()
+        files = {"file": ("logo.png", io.BytesIO(png), "image/png")}
+        r = _multipart_post(admin_session, f"{BASE_URL}/api/settings/branding/logo", files)
+        assert r.status_code == 200, r.text
+        data = r.json()["data"]
+        assert data["logo_ext"] == ".png"
+        assert data["bytes"] == len(png)
+
+        # verify GET branding reflects has_logo=true
+        meta = admin_session.get(f"{BASE_URL}/api/settings/branding").json()["data"]
+        assert meta["has_logo"] is True
+        assert meta["logo_ext"] == ".png"
+
+        # GET logo file (public)
+        rf = requests.get(f"{BASE_URL}/api/settings/branding/logo")
+        assert rf.status_code == 200
+        assert rf.headers.get("content-type", "").startswith("image/png")
+        assert rf.content == png
+
+        # DELETE
+        rd = admin_session.delete(f"{BASE_URL}/api/settings/branding/logo")
+        assert rd.status_code == 200
+        meta2 = admin_session.get(f"{BASE_URL}/api/settings/branding").json()["data"]
+        assert meta2["has_logo"] is False
+        # GET the file now 404
+        rf2 = requests.get(f"{BASE_URL}/api/settings/branding/logo")
+        assert rf2.status_code == 404
+
+    def test_logo_upload_rejects_bad_ext(self, admin_session):
+        files = {"file": ("logo.gif", io.BytesIO(b"gifdata"), "image/gif")}
+        r = _multipart_post(admin_session, f"{BASE_URL}/api/settings/branding/logo", files)
+        assert r.status_code == 400
+
+    def test_logo_upload_requires_admin(self, op_session):
+        files = {"file": ("logo.png", io.BytesIO(b"\x89PNGxxx"), "image/png")}
+        r = _multipart_post(op_session, f"{BASE_URL}/api/settings/branding/logo", files)
+        assert r.status_code in (401, 403)
+
+
+# ---------------- WorkOrder PATCH ----------------
+class TestWorkOrderPatch:
+    def _pick_wo(self, admin_session):
+        r = admin_session.get(f"{BASE_URL}/api/work-orders?limit=50")
+        assert r.status_code == 200
+        # prefer closed WO to avoid disturbing lifecycle
+        wos = r.json()["data"]
+        closed = [w for w in wos if w.get("status") == "closed"]
+        return (closed[0] if closed else wos[0]) if wos else None
+
+    def test_patch_priority_admin(self, admin_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders available")
+        orig = wo.get("priority") or "p3"
+        r = admin_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                                 json={"priority": "p1"})
+        assert r.status_code == 200, r.text
+        assert r.json()["data"]["priority"] == "p1"
+        # revert
+        admin_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                             json={"priority": orig})
+
+    def test_patch_invalid_priority(self, admin_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders")
+        r = admin_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                                 json={"priority": "urgent"})
+        assert r.status_code == 400
+        body = r.json()
+        detail = body.get("detail") or {}
+        if isinstance(detail, dict):
+            assert detail.get("code") == "WO_INVALID_PRIORITY"
+
+    def test_patch_technician_can_edit(self, admin_session, tech_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders")
+        r = tech_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                                json={"priority": "p2"})
+        assert r.status_code == 200, r.text
+        assert r.json()["data"]["priority"] == "p2"
+
+    def test_patch_operator_denied(self, admin_session, op_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders")
+        r = op_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                              json={"priority": "p3"})
+        assert r.status_code in (401, 403)
+
+    def test_patch_timestamps_and_derived(self, admin_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders")
+        assigned = "2026-01-01T08:00:00+00:00"
+        started = "2026-01-01T08:30:00+00:00"
+        completed = "2026-01-01T09:15:00+00:00"
+        closed = "2026-01-01T09:30:00+00:00"
+        r = admin_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}", json={
+            "assigned_at": assigned,
+            "repair_started_at": started,
+            "repair_completed_at": completed,
+            "closed_at": closed,
+        })
+        assert r.status_code == 200, r.text
+        wo2 = r.json()["data"]
+        # Timestamps saved
+        assert wo2["assigned_at"] == assigned
+        assert wo2["repair_started_at"] == started
+        assert wo2["repair_completed_at"] == completed
+        assert wo2["closed_at"] == closed
+        # Derived
+        assert wo2.get("response_time_seconds") == 30 * 60
+        assert wo2.get("repair_time_seconds") == 45 * 60
+        assert wo2.get("close_time_seconds") == 90 * 60
+
+    def test_patch_invalid_timestamp(self, admin_session):
+        wo = self._pick_wo(admin_session)
+        if not wo:
+            pytest.skip("No work orders")
+        r = admin_session.patch(f"{BASE_URL}/api/work-orders/{wo['id']}",
+                                 json={"assigned_at": "not-a-date"})
+        assert r.status_code == 400
+        detail = r.json().get("detail") or {}
+        if isinstance(detail, dict):
+            assert detail.get("code") == "WO_INVALID_TIMESTAMP"
+
+
+# ---------------- Admin Data Ops ----------------
+class TestAdminDataOps:
+    def test_data_summary_admin(self, admin_session):
+        r = admin_session.get(f"{BASE_URL}/api/admin/data-summary")
+        assert r.status_code == 200
+        data = r.json()["data"]
+        for c in ("users", "machines", "production_lines",
+                  "breakdowns", "work_orders"):
+            assert c in data
+            assert isinstance(data[c], int)
+
+    def test_data_summary_non_admin(self, op_session):
+        r = op_session.get(f"{BASE_URL}/api/admin/data-summary")
+        assert r.status_code in (401, 403)
+
+    def test_seed_demo_idempotent(self, admin_session):
+        r = admin_session.post(f"{BASE_URL}/api/admin/seed-demo")
+        assert r.status_code == 200, r.text
+        # baseline machine count
+        s1 = admin_session.get(f"{BASE_URL}/api/admin/data-summary").json()["data"]
+        m1 = s1["machines"]
+        # run again — should not multiply
+        r2 = admin_session.post(f"{BASE_URL}/api/admin/seed-demo")
+        assert r2.status_code == 200
+        s2 = admin_session.get(f"{BASE_URL}/api/admin/data-summary").json()["data"]
+        assert s2["machines"] == m1, "seed-demo not idempotent: machines duplicated"
+
+    def test_wipe_endpoints_reachable_non_admin_403(self, op_session):
+        r = op_session.post(f"{BASE_URL}/api/admin/wipe-transactional")
+        assert r.status_code in (401, 403)
+        r2 = op_session.post(f"{BASE_URL}/api/admin/wipe-demo")
+        assert r2.status_code in (401, 403)
+
+    # NOTE: We intentionally do NOT run wipe-transactional / wipe-demo against
+    # the live preview DB (destructive). Existence + auth guarding is validated
+    # by the two negative tests above and the seed_demo round-trip.

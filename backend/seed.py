@@ -11,7 +11,12 @@ async def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def seed_users() -> None:
+async def seed_admin() -> None:
+    """Always-on: create the admin user so a fresh installation can log in.
+
+    Technician and Operator accounts are created only if the corresponding
+    _EMAIL/_PASSWORD env vars are set (backwards-compat for demo installs).
+    """
     db = get_db()
     accounts = [
         ("ADMIN_EMAIL",    "ADMIN_PASSWORD",    "admin",     "admin@factory.local",     "Factory Admin"),
@@ -36,6 +41,10 @@ async def seed_users() -> None:
             await db.users.update_one({"email": email},
                                         {"$set": {"password_hash": hash_password(password),
                                                   "updated_at": now}})
+
+
+# Legacy alias for external callers
+seed_users = seed_admin
 
 
 async def seed_failure_modes() -> None:
@@ -160,6 +169,23 @@ async def seed_plant_and_lines() -> None:
 
 
 async def seed_all() -> None:
-    await seed_users()
+    """Backwards-compat: full seed (admin + failure modes + plant + demo lines).
+
+    New installations should ONLY call `seed_admin()` on startup. Demo data is
+    seeded on demand via the Admin > System > Seed Demo Data button.
+    """
+    await seed_admin()
     await seed_failure_modes()
     await seed_plant_and_lines()
+
+
+async def seed_demo_data() -> None:
+    """Populate failure modes + demo plant/lines/machines. Called on demand."""
+    await seed_failure_modes()
+    await seed_plant_and_lines()
+    # Also populate multi-department (packaging + utilities) demo data
+    try:
+        from seed_departments import seed_departments_all
+        await seed_departments_all()
+    except Exception:
+        pass

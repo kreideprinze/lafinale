@@ -11,8 +11,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from db import ensure_indexes
-from seed import seed_all
-from seed_departments import seed_departments_all
+from seed import seed_admin
 
 from routers.auth import router as auth_router
 from routers.users import router as users_router
@@ -25,6 +24,9 @@ from routers.runtime import router as runtime_router
 from routers.notifications import router as notifications_router
 from routers.imports import router as imports_router
 from routers.ws import router as ws_router
+from routers.admin_ops import router as admin_ops_router
+from routers.settings import router as settings_router
+from routers.personnel import router as personnel_router
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
                      format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -59,15 +61,17 @@ app.include_router(runtime_router)
 app.include_router(notifications_router)
 app.include_router(imports_router)
 app.include_router(ws_router)
+app.include_router(admin_ops_router)
+app.include_router(settings_router)
+app.include_router(personnel_router)
 
 
 @app.on_event("startup")
 async def _startup():
     try:
         await ensure_indexes()
-        await seed_all()
-        await seed_departments_all()
-        logger.info("Startup: indexes ensured, seed + department migration complete.")
+        await seed_admin()
+        logger.info("Startup: indexes ensured, admin user seeded. Demo data available via Admin > System.")
     except Exception as e:
         logger.exception(f"Startup failure: {e}")
 

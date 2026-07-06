@@ -3,8 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { live } from "../lib/ws";
 import { api } from "../lib/api";
-import { Bell, LogOut, LogIn, Zap } from "lucide-react";
+import { Bell, LogOut, LogIn } from "lucide-react";
 import GlobalFilterBar from "./GlobalFilterBar";
+import Brand from "./Brand";
 
 // Nav items visible when NOT logged in (operator kiosk mode).
 const NAV_PUBLIC = [
@@ -67,9 +68,8 @@ export default function AppShell({ children }) {
       <div className="panel-2" style={{ borderBottom: "1px solid #1f1f1f" }}>
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2" data-testid="brand-title">
-              <Zap size={16} className="text-data" />
-              <span className="mono text-sm tracking-[0.2em]">FACTORY CMMS</span>
+            <div className="flex items-center gap-2">
+              <Brand iconSize={16} />
               <span className="text-mute text-xs mono">ENTERPRISE v1.0</span>
             </div>
             <nav className="flex items-center gap-0">
