@@ -159,3 +159,59 @@ Build a production-grade, SCADA-styled, centralized live CMMS + Reliability Engi
 - P2: Bulk CSV import for machines and failure-modes (same UX as runtime import)
 - P2: Refactor N+1 Mongo lookups in `bulk_runtime_dry_run`/`commit` (do one bulk `$or` find instead of per-row `find_one`) — flagged by testing agent, acceptable for now at ≤1000-row CSVs.
 - P2: Cleanup React hydration warning `<span> cannot be a child of <option>` (editor instrumentation, non-blocking).
+
+### 2026-02-11 — Operator kiosk + Personnel analytics + Branding + WO edit + Productization
+**Operator kiosk (Control Room without login)**
+- `/` route is now **public**. Auth is only required for /breakdowns, /work-orders, /analytics, /timeline, /runtime, /admin.
+- Small "MAINTENANCE LOGIN" link (data-testid `btn-maintenance-login`) tucked top-right when unauthenticated.
+- Sidebar redesigned: summary counts (Active BDs / Open WOs / Critical Down) + Active Breakdowns list + Active Work Orders list. KPI strip (Availability/MTTR/MTBF/Downtime) removed from Control Room and lives exclusively in `/analytics`.
+- Machine cards support **right-click, double-click, and hover REPORT button** to open the report dialog. Clicking a sidebar row highlights + scrolls-to the associated machine on the flow diagram.
+
+**Simplified breakdown report**
+- Only 3 breakdown types: mechanical (default), electrical, control(PLC). Legacy types retained in the enum for backwards-compat with imported records; UI no longer surfaces them.
+- Mandatory free-text `reporter_name` (no login for operators). Auto-captured dept/area/equipment from the selected machine.
+- Auto-Create Work Order checkbox (default true).
+- Public endpoint: `POST /api/breakdowns/report` — no auth, no rate-limit (closed-LAN trust). Authenticated endpoint `POST /api/breakdowns` accepts the same fields; when a technician submits, `reported_by` is captured in addition to `reporter_name`.
+
+**Personnel analytics**
+- New endpoint `GET /api/analytics/personnel?from&to&department` — returns `reporters[]`, `technicians[]`, and `top` (most_active_reporter, most_active_technician, fastest_technician, slowest_technician).
+- New Analytics tab (data-testid `ana-tab-personnel`).
+
+**Branding / custom logo**
+- New collection `settings` (single `id="branding"` doc). Endpoints:
+  - `GET  /api/settings/branding` (public read)
+  - `PUT  /api/settings/branding` (admin) — company_name + primary_color
+  - `POST /api/settings/branding/logo` (admin, multipart) — PNG/JPG/SVG/WEBP ≤ 512KB, stored on disk at `${BACKEND_UPLOADS_DIR}/logo.<ext>`
+  - `GET  /api/settings/branding/logo` (public) — returns the file
+  - `DELETE /api/settings/branding/logo` (admin)
+- `<Brand>` component replaces the `<Zap>` icon in AppShell + LoginPage. Custom logo shown when uploaded; text-only fallback otherwise.
+- Admin page: `/admin/branding`.
+
+**Work-order editing**
+- `PATCH /api/work-orders/{id}` (admin + technician) — priority (`p1..p4`), assigned_at, accepted_at, repair_started_at, repair_completed_at, closed_at. Created_at stays read-only for audit. Derived durations (response/repair/close_time_seconds) recomputed automatically.
+- UI: `wo-edit-btn` on WO Detail opens a modal with priority radios + datetime-local inputs.
+
+**Data lifecycle + productization**
+- Fresh installs now boot with only the admin user seeded. Demo data (plant/lines/machines/failure modes) is opt-in.
+- New admin endpoints: `GET /api/admin/data-summary`, `POST /api/admin/seed-demo`, `POST /api/admin/wipe-transactional`, `POST /api/admin/wipe-demo`.
+- New Admin page tab: `/admin/system` with per-collection counts + Seed / Wipe-Transactional / Wipe-Demo actions (destructive actions require typing CONFIRM).
+- Deployment tooling:
+  - `/app/backend/verify_install.py` — env-var + Mongo + admin-seed sanity check
+  - `/app/backend/migrate.py` — versioned schema migrations (`schema_migrations` collection). Currently: backfill `reporter_name` on legacy breakdowns, default `priority=p3` on legacy WOs
+  - `/app/deploy/backup.sh` — mongodump + uploads → tarball
+  - `/app/deploy/restore.sh` — mongorestore + uploads restore
+- WebSocket now accepts anonymous connections (public channel) so the operator kiosk gets real-time updates too.
+
+**Regression tests**: `/app/backend/tests/backend_test.py` — 41 pytest cases (all passing). Testing agent iteration_4 report: 100% backend + 100% UI.
+
+## Backlog (P1 / P2)
+- P1: PDF export of Department KPI panel
+- P1: Availability report combining `runtime_logs` + breakdowns per department per month
+- P2: Bulk CSV import for machines and failure-modes (reuse the runtime-import UX)
+- P2: Harmonise `response_time_seconds` semantics between `/start` and `PATCH edit`
+- P2: Reject unknown department codes in personnel/dept-KPI endpoints with 400
+- P2: MIME-sniff uploaded logos (currently trusts filename extension)
+- P2: Convert WO PATCH body to a Pydantic `WOEditReq` for OpenAPI clarity
+- P2: When PATCH clears a timestamp anchor, also unset the derived duration
+- P2: Suppress React hydration warning `<span> cannot be a child of <option>` (editor tooling)
+

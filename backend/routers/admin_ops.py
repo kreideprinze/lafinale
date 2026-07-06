@@ -10,6 +10,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 TRANSACTIONAL_COLLECTIONS = [
     "breakdowns",
     "work_orders",
+    "repair_events",
     "runtime_logs",
     "notifications",
     "timeline_events",
