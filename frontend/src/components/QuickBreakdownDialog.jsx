@@ -11,7 +11,14 @@ const TYPES = [
   { v: "other", label: "OTHER" },
 ];
 
+const DEPTS = [
+  { v: "process",   label: "PROCESS" },
+  { v: "packaging", label: "PACKAGING" },
+  { v: "utilities", label: "UTILITIES" },
+];
+
 export default function QuickBreakdownDialog({ open, onClose, activeLine, preselectMachine, onCreated }) {
+  const [department, setDepartment] = useState("process");
   const [lines, setLines] = useState([]);
   const [lineId, setLineId] = useState(null);
   const [machines, setMachines] = useState([]);
@@ -25,7 +32,8 @@ export default function QuickBreakdownDialog({ open, onClose, activeLine, presel
 
   useEffect(() => {
     if (!open) return;
-    api.get("/lines").then((r) => setLines(r.data.data));
+    const initialDept = preselectMachine?.department || activeLine?.department || "process";
+    setDepartment(initialDept);
     setLineId(preselectMachine?.line_id || activeLine?.id || null);
     setMachineId(preselectMachine?.id || null);
     setType("mechanical");
@@ -34,6 +42,17 @@ export default function QuickBreakdownDialog({ open, onClose, activeLine, presel
     setTicket(null);
     setTimeout(() => descRef.current?.focus(), 100);
   }, [open, preselectMachine?.id, activeLine?.id]);
+
+  // Load lines when department changes
+  useEffect(() => {
+    if (!open) return;
+    api.get(`/lines?department=${department}`).then((r) => {
+      setLines(r.data.data);
+      if (!r.data.data.find((l) => l.id === lineId)) {
+        setLineId(r.data.data[0]?.id || null);
+      }
+    });
+  }, [department, open]);
 
   useEffect(() => {
     if (!lineId) { setMachines([]); return; }
@@ -98,7 +117,21 @@ export default function QuickBreakdownDialog({ open, onClose, activeLine, presel
         ) : (
           <form onSubmit={submit} className="p-5 flex flex-col gap-4">
             <div>
-              <label className="text-[10px] tracking-[0.15em] text-mute uppercase">Line</label>
+              <label className="text-[10px] tracking-[0.15em] text-mute uppercase">Department</label>
+              <div className="grid grid-cols-3 gap-1 mt-2">
+                {DEPTS.map((d) => (
+                  <button type="button" key={d.v} data-testid={`bd-dept-${d.v}`}
+                    className="btn" style={{
+                      padding: "6px 4px", fontSize: 10,
+                      borderColor: department === d.v ? "var(--data)" : "var(--border-strong)",
+                      color: department === d.v ? "var(--data)" : "var(--text-dim)",
+                    }}
+                    onClick={() => setDepartment(d.v)}>{d.label}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] tracking-[0.15em] text-mute uppercase">Area</label>
               <select className="field mt-2 mono" data-testid="bd-line"
                 value={lineId || ""} onChange={(e) => setLineId(e.target.value)}>
                 {lines.map((l) => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}

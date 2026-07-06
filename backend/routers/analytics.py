@@ -77,6 +77,7 @@ async def line_downtime_trend(line_id: str, days: int = 30, user=Depends(get_cur
 
 @router.get("/rankings")
 async def rankings(dim: str = "machine", metric: str = "downtime", limit: int = 20,
+                    department: Optional[str] = None,
                     line_id: Optional[str] = None,
                     machine_id: Optional[str] = None,
                     failure_mode_id: Optional[str] = None,
@@ -92,14 +93,19 @@ async def rankings(dim: str = "machine", metric: str = "downtime", limit: int = 
         dt_from = datetime.now(timezone.utc) - timedelta(days=days)
     dt_to = datetime.fromisoformat(to_.replace("Z", "+00:00")) if to_ else datetime.now(timezone.utc)
     q: dict = {"breakdown_start_ts": {"$gte": dt_from.isoformat(), "$lte": dt_to.isoformat()}}
+    if department:
+        q["department"] = department
     if line_id:
         q["line_id"] = line_id
     if machine_id:
         q["machine_id"] = machine_id
     if failure_mode_id:
         q["failure_mode_id"] = failure_mode_id
-    bds = await db.breakdowns.find(q, {"_id": 0}).to_list(100000)
-    machines = {m["id"]: m for m in await db.machines.find({"is_packing": {"$ne": True}}, {"_id": 0}).to_list(2000)}
+    bds = await db.breakdowns.find(q, {"_id": 0}).to_list(200000)
+    m_q = {"is_packing": {"$ne": True}}
+    if department:
+        m_q["department"] = department
+    machines = {m["id"]: m for m in await db.machines.find(m_q, {"_id": 0}).to_list(20000)}
     agg = {}
     for b in bds:
         mid = b["machine_id"]
@@ -108,6 +114,7 @@ async def rankings(dim: str = "machine", metric: str = "downtime", limit: int = 
         e = agg.setdefault(mid, {"machine_id": mid, "name": machines[mid]["name"],
                                     "line_id": machines[mid]["line_id"],
                                     "code": machines[mid].get("code"),
+                                    "department": machines[mid].get("department"),
                                     "count": 0, "downtime_seconds": 0})
         e["count"] += 1
         e["downtime_seconds"] += int(b.get("duration_seconds") or 0)
@@ -115,6 +122,80 @@ async def rankings(dim: str = "machine", metric: str = "downtime", limit: int = 
     key = {"count": "count", "downtime": "downtime_seconds"}.get(metric, "downtime_seconds")
     rows.sort(key=lambda x: -x[key])
     return {"ok": True, "data": rows[:limit]}
+
+
+@router.get("/department/{department}/kpi")
+async def department_kpi(department: str,
+                          from_: Optional[str] = Query(None, alias="from"),
+                          to_: Optional[str] = None,
+                          user=Depends(get_current_user)):
+    """Department-wide KPIs: total downtime, failures, MTTR, top causes/equipment."""
+    db = get_db()
+    dt_from, dt_to = _parse_window(from_, to_)
+    bds = await db.breakdowns.find(
+        {"department": department,
+         "breakdown_start_ts": {"$gte": dt_from.isoformat(), "$lte": dt_to.isoformat()}},
+        {"_id": 0},
+    ).to_list(200000)
+    wos = await db.work_orders.find(
+        {"department": department,
+         "closed_at": {"$ne": None, "$gte": dt_from.isoformat(), "$lte": dt_to.isoformat()}},
+        {"_id": 0},
+    ).to_list(200000)
+    failures = len(bds)
+    downtime_s = sum(int(b.get("duration_seconds") or 0) for b in bds)
+    repair_times = [int(w.get("repair_time_seconds") or 0) for w in wos if (w.get("repair_time_seconds") or 0) > 0]
+    mttr = (sum(repair_times) / len(repair_times)) if repair_times else None
+
+    # top failure modes
+    modes = {m["id"]: m for m in await db.failure_modes.find({}, {"_id": 0}).to_list(1000)}
+    mode_agg: dict = {}
+    for b in bds:
+        k = b.get("failure_mode_id") or "unknown"
+        e = mode_agg.setdefault(k, {"key": k, "label": modes.get(k, {}).get("name") or "Unknown",
+                                       "count": 0, "downtime_seconds": 0})
+        e["count"] += 1
+        e["downtime_seconds"] += int(b.get("duration_seconds") or 0)
+    top_causes = sorted(mode_agg.values(), key=lambda x: -x["count"])[:10]
+
+    # top problematic equipment
+    machines = {m["id"]: m for m in await db.machines.find({"department": department}, {"_id": 0}).to_list(20000)}
+    mach_agg: dict = {}
+    for b in bds:
+        mid = b["machine_id"]
+        if mid not in machines:
+            continue
+        e = mach_agg.setdefault(mid, {"machine_id": mid,
+                                         "code": machines[mid].get("code"),
+                                         "name": machines[mid]["name"],
+                                         "count": 0, "downtime_seconds": 0})
+        e["count"] += 1
+        e["downtime_seconds"] += int(b.get("duration_seconds") or 0)
+    top_equipment = sorted(mach_agg.values(), key=lambda x: -x["downtime_seconds"])[:10]
+
+    # monthly trend within window
+    monthly: dict = {}
+    for b in bds:
+        d = (b.get("date_of_breakdown") or "")[:7]  # YYYY-MM
+        if not d:
+            continue
+        m = monthly.setdefault(d, {"month": d, "count": 0, "downtime_seconds": 0})
+        m["count"] += 1
+        m["downtime_seconds"] += int(b.get("duration_seconds") or 0)
+    monthly_trend = sorted(monthly.values(), key=lambda x: x["month"])
+
+    return {"ok": True, "data": {
+        "department": department,
+        "window_from": dt_from.isoformat(),
+        "window_to": dt_to.isoformat(),
+        "failures": failures,
+        "downtime_seconds": downtime_s,
+        "mttr_seconds": mttr,
+        "n_closed_wo": len(repair_times),
+        "top_causes": top_causes,
+        "top_equipment": top_equipment,
+        "monthly_trend": monthly_trend,
+    }}
 
 
 @router.get("/machine/{machine_id}/history")

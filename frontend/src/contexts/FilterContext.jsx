@@ -11,6 +11,7 @@ const DEFAULT_STATE = {
   preset: "last_30_days",
   from: null,      // ISO string
   to: null,        // ISO string
+  department: null,   // process | packaging | utilities | null(=all)
   line_id: null,
   machine_id: null,
   failure_mode_id: null,
@@ -88,6 +89,7 @@ export const PRESETS = [
 
 export function FilterProvider({ children }) {
   const [state, setState] = useState(loadInitial);
+  const [departments, setDepartments] = useState([]);
   const [lines, setLines] = useState([]);
   const [machines, setMachines] = useState([]);
   const [failureModes, setFailureModes] = useState([]);
@@ -100,6 +102,7 @@ export function FilterProvider({ children }) {
 
   // Load master lists once
   useEffect(() => {
+    api.get("/departments").then((r) => setDepartments(r.data.data)).catch(() => {});
     api.get("/lines").then((r) => setLines(r.data.data)).catch(() => {});
     api.get("/machines").then((r) => setMachines(r.data.data)).catch(() => {});
     api.get("/failure-modes").then((r) => setFailureModes(r.data.data)).catch(() => {});
@@ -124,21 +127,34 @@ export function FilterProvider({ children }) {
   const setFailureMode = useCallback((id) => setState((s) => ({ ...s, failure_mode_id: id || null })), []);
   const setTechnician = useCallback((id) => setState((s) => ({ ...s, technician_id: id || null })), []);
   const setDates = useCallback((from, to) => setState((s) => ({ ...s, from, to, preset: "custom" })), []);
+  const setDepartment = useCallback((department) => setState((s) => ({
+    ...s, department: department || null,
+    // Changing department clears line + machine to avoid stale scope
+    line_id: null, machine_id: null,
+  })), []);
 
   const clear = useCallback(() => {
     const r = computeRange("last_30_days");
     setState({ ...DEFAULT_STATE, ...r });
   }, []);
 
-  // Machines filtered to the active line (for the Machine dropdown)
+  // Lines filtered by active department
+  const linesInScope = useMemo(() => {
+    if (!state.department) return lines;
+    return lines.filter((l) => l.department === state.department);
+  }, [lines, state.department]);
+
+  // Machines filtered to active department + line (for the Machine dropdown)
   const machinesInScope = useMemo(() => {
     let list = machines.filter((m) => !m.is_packing && m.kind !== "stage");
+    if (state.department) list = list.filter((m) => m.department === state.department);
     if (state.line_id) list = list.filter((m) => m.line_id === state.line_id);
     return list;
-  }, [machines, state.line_id]);
+  }, [machines, state.department, state.line_id]);
 
   const activeCount = useMemo(() => {
     let n = 0;
+    if (state.department) n++;
     if (state.line_id) n++;
     if (state.machine_id) n++;
     if (state.failure_mode_id) n++;
@@ -150,12 +166,11 @@ export function FilterProvider({ children }) {
 
   const value = {
     ...state,
-    lines,
-    machines,
-    machinesInScope,
-    failureModes,
-    technicians,
-    setLine, setMachine, setFailureMode, setTechnician,
+    departments,
+    lines, linesInScope,
+    machines, machinesInScope,
+    failureModes, technicians,
+    setDepartment, setLine, setMachine, setFailureMode, setTechnician,
     setDates, applyPreset, clear,
     activeCount,
   };

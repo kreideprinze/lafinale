@@ -8,6 +8,18 @@ from deps import get_current_user, require_admin, write_audit
 router = APIRouter(prefix="/api", tags=["masters"])
 
 
+# -------- Departments --------
+@router.get("/departments")
+async def list_departments(user=Depends(get_current_user)):
+    """Aggregate departments actually present in production_lines."""
+    db = get_db()
+    codes = await db.production_lines.distinct("department")
+    labels = {"process": "Process", "packaging": "Packaging", "utilities": "Utilities"}
+    return {"ok": True, "data": [
+        {"code": c, "name": labels.get(c, c.title())} for c in sorted(codes or []) if c
+    ]}
+
+
 # -------- Plants --------
 @router.get("/plants")
 async def list_plants(user=Depends(get_current_user)):
@@ -16,12 +28,18 @@ async def list_plants(user=Depends(get_current_user)):
     return {"ok": True, "data": plants}
 
 
-# -------- Lines --------
+# -------- Lines (aka Areas — one endpoint, filtered by department) --------
 @router.get("/lines")
-async def list_lines(plant_id: Optional[str] = None, user=Depends(get_current_user)):
+async def list_lines(plant_id: Optional[str] = None,
+                      department: Optional[str] = None,
+                      user=Depends(get_current_user)):
     db = get_db()
-    q = {"plant_id": plant_id} if plant_id else {}
-    lines = await db.production_lines.find(q, {"_id": 0}).sort("sequence", 1).to_list(200)
+    q: dict = {}
+    if plant_id:
+        q["plant_id"] = plant_id
+    if department:
+        q["department"] = department
+    lines = await db.production_lines.find(q, {"_id": 0}).sort([("department", 1), ("sequence", 1)]).to_list(500)
     return {"ok": True, "data": lines}
 
 
@@ -47,10 +65,16 @@ async def line_tree(line_id: str, user=Depends(get_current_user)):
 
 # -------- Machines --------
 @router.get("/machines")
-async def list_machines(line_id: Optional[str] = None, user=Depends(get_current_user)):
+async def list_machines(line_id: Optional[str] = None,
+                         department: Optional[str] = None,
+                         user=Depends(get_current_user)):
     db = get_db()
-    q = {"line_id": line_id} if line_id else {}
-    machines = await db.machines.find(q, {"_id": 0}).sort("sequence", 1).to_list(2000)
+    q: dict = {}
+    if line_id:
+        q["line_id"] = line_id
+    if department:
+        q["department"] = department
+    machines = await db.machines.find(q, {"_id": 0}).sort("sequence", 1).to_list(5000)
     return {"ok": True, "data": machines}
 
 
@@ -175,4 +199,6 @@ async def upsert_spare(body: dict, admin=Depends(require_admin)):
         }
         await db.spares.insert_one(item)
         item.pop("_id", None)
+    return {"ok": True, "data": item}
+    item.pop("_id", None)
     return {"ok": True, "data": item}

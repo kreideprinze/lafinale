@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/work-orders", tags=["work_orders"])
 
 @router.get("")
 async def list_wo(
+    department: Optional[str] = None,
     assigned_to: Optional[str] = None,
     status: Optional[str] = None,
     line_id: Optional[str] = None,
@@ -24,6 +25,8 @@ async def list_wo(
 ):
     db = get_db()
     q = {}
+    if department:
+        q["department"] = department
     if assigned_to == "me":
         q["assigned_to"] = user["id"]
     elif assigned_to:

@@ -45,6 +45,7 @@ async def create_breakdown(req: BreakdownCreateReq, user=Depends(get_current_use
     breakdown = {
         "id": uid(), "ticket_no": ticket,
         "plant_id": line["plant_id"], "line_id": req.line_id, "machine_id": req.machine_id,
+        "department": machine.get("department", "process"),
         "reported_by": user["id"], "reporter_email": user["email"],
         "area_text": machine.get("name"), "equipment_text": machine.get("name"),
         "description": req.description.strip(),
@@ -64,6 +65,7 @@ async def create_breakdown(req: BreakdownCreateReq, user=Depends(get_current_use
     wo = {
         "id": uid(), "wo_no": wo_no, "breakdown_id": breakdown["id"],
         "plant_id": line["plant_id"], "line_id": req.line_id, "machine_id": req.machine_id,
+        "department": machine.get("department", "process"),
         "type": "corrective", "priority": _prio_for_sev(severity),
         "status": WOStatus.open.value,
         "assigned_to": None, "assigned_at": None,
@@ -136,6 +138,7 @@ def _prio_for_sev(sev: str) -> str:
 
 @router.get("")
 async def list_breakdowns(
+    department: Optional[str] = None,
     line_id: Optional[str] = None,
     machine_id: Optional[str] = None,
     status: Optional[str] = None,
@@ -148,6 +151,8 @@ async def list_breakdowns(
 ):
     db = get_db()
     q = {}
+    if department:
+        q["department"] = department
     if line_id:
         q["line_id"] = line_id
     if machine_id:

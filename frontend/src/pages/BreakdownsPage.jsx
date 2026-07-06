@@ -13,6 +13,7 @@ export default function BreakdownsPage() {
 
   const load = async () => {
     const p = new URLSearchParams();
+    if (f.department) p.set("department", f.department);
     if (f.line_id) p.set("line_id", f.line_id);
     if (f.machine_id) p.set("machine_id", f.machine_id);
     if (f.failure_mode_id) p.set("failure_mode_id", f.failure_mode_id);
@@ -23,7 +24,7 @@ export default function BreakdownsPage() {
     setRows(r.data.data);
   };
 
-  useEffect(() => { load(); }, [status, f.line_id, f.machine_id, f.failure_mode_id, f.from, f.to]);
+  useEffect(() => { load(); }, [status, f.department, f.line_id, f.machine_id, f.failure_mode_id, f.from, f.to]);
   useEffect(() => {
     const off = live.onEvent((m) => {
       if (m?.type === "event" && (m.event === "breakdown.created" || m.event === "breakdown.closed")) load();

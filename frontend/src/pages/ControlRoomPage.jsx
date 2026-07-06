@@ -21,14 +21,19 @@ export default function ControlRoomPage() {
   const nav = useNavigate();
 
   useEffect(() => {
-    api.get("/lines").then((r) => {
+    // Load lines filtered by department if set (else all process areas for the twin)
+    const p = new URLSearchParams();
+    if (f.department) p.set("department", f.department);
+    else p.set("department", "process");  // Control Room twin defaults to process
+    api.get(`/lines?${p}`).then((r) => {
       setLines(r.data.data);
       // Prefer globally-selected line
       const g = f.line_id ? r.data.data.find((l) => l.id === f.line_id) : null;
       if (g) setActiveLine(g);
-      else if (r.data.data.length > 0 && !activeLine) setActiveLine(r.data.data[0]);
+      else if (r.data.data.length > 0) setActiveLine(r.data.data[0]);
+      else setActiveLine(null);
     });
-  }, []);
+  }, [f.department, f.line_id]);
 
   // React to global filter line change
   useEffect(() => {

@@ -28,6 +28,7 @@ export default function WorkOrderQueuePage() {
     const params = new URLSearchParams();
     if (tab === "me") params.set("assigned_to", "me");
     else if (tab === "open") params.set("status", "open");
+    if (f.department) params.set("department", f.department);
     if (f.line_id) params.set("line_id", f.line_id);
     if (f.machine_id) params.set("machine_id", f.machine_id);
     if (f.technician_id && tab !== "me") params.set("assigned_to", f.technician_id);
@@ -35,7 +36,7 @@ export default function WorkOrderQueuePage() {
     if (f.to) params.set("to", f.to);
     const r = await api.get(`/work-orders?${params}`);
     setRows(r.data.data);
-  }, [tab, f.line_id, f.machine_id, f.technician_id, f.from, f.to]);
+  }, [tab, f.department, f.line_id, f.machine_id, f.technician_id, f.from, f.to]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

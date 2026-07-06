@@ -12,6 +12,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from db import ensure_indexes
 from seed import seed_all
+from seed_departments import seed_departments_all
 
 from routers.auth import router as auth_router
 from routers.users import router as users_router
@@ -65,7 +66,8 @@ async def _startup():
     try:
         await ensure_indexes()
         await seed_all()
-        logger.info("Startup: indexes ensured, seed complete.")
+        await seed_departments_all()
+        logger.info("Startup: indexes ensured, seed + department migration complete.")
     except Exception as e:
         logger.exception(f"Startup failure: {e}")
 

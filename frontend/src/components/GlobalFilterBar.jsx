@@ -75,15 +75,31 @@ export default function GlobalFilterBar() {
         )}
       </div>
 
-      <FilterCell label="LINE" testid="flt-line-cell">
+      <FilterCell label="DEPT" testid="flt-dept-cell">
+        <select
+          className="filter-select"
+          value={f.department || ""}
+          onChange={(e) => f.setDepartment(e.target.value)}
+          data-testid="flt-dept-select"
+        >
+          <option value="">ALL DEPTS</option>
+          {f.departments.map((d) => (
+            <option key={d.code} value={d.code}>{d.name.toUpperCase()}</option>
+          ))}
+        </select>
+      </FilterCell>
+
+      <FilterCell label="AREA" testid="flt-line-cell">
         <select
           className="filter-select"
           value={f.line_id || ""}
           onChange={(e) => f.setLine(e.target.value)}
           data-testid="flt-line-select"
         >
-          <option value="">ALL LINES</option>
-          {f.lines.map((l) => <option key={l.id} value={l.id}>{l.code}</option>)}
+          <option value="">ALL AREAS</option>
+          {f.linesInScope.map((l) => (
+            <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+          ))}
         </select>
       </FilterCell>
 

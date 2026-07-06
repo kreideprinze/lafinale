@@ -24,10 +24,21 @@ async def ensure_indexes() -> None:
     db = get_db()
     await db.users.create_index("email", unique=True)
     await db.plants.create_index("code", unique=True)
-    await db.production_lines.create_index([("plant_id", 1), ("code", 1)], unique=True)
+    # Old index (plant_id+code unique) is replaced by (plant_id+department+code)
+    # so multiple departments can share codes like "PC21".
+    try:
+        await db.production_lines.drop_index("plant_id_1_code_1")
+    except Exception:
+        pass
+    await db.production_lines.create_index(
+        [("plant_id", 1), ("department", 1), ("code", 1)], unique=True,
+    )
+    await db.production_lines.create_index("department")
     await db.machines.create_index([("line_id", 1), ("code", 1)], unique=True)
+    await db.machines.create_index("department")
     await db.machines.create_index("parent_machine_id")
     await db.machines.create_index("status")
+    await db.breakdowns.create_index("department")
     await db.breakdowns.create_index("ticket_no", unique=True)
     await db.breakdowns.create_index([("line_id", 1), ("breakdown_start_ts", -1)])
     await db.breakdowns.create_index([("machine_id", 1), ("breakdown_start_ts", -1)])

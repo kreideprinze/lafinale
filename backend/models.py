@@ -21,6 +21,12 @@ def now_utc() -> datetime:
 
 
 # ---------------- ENUMS ----------------
+class Department(str, Enum):
+    process = "process"
+    packaging = "packaging"
+    utilities = "utilities"
+
+
 class Role(str, Enum):
     admin = "admin"
     technician = "technician"
@@ -164,6 +170,7 @@ class Plant(BaseDoc):
 
 class ProductionLine(BaseDoc):
     plant_id: str
+    department: Department = Department.process
     code: str
     name: str
     sequence: int = 0
@@ -180,6 +187,7 @@ class MachineGroup(BaseDoc):
 
 class Machine(BaseDoc):
     line_id: str
+    department: Department = Department.process
     group_id: Optional[str] = None
     parent_machine_id: Optional[str] = None
     code: str
@@ -246,6 +254,7 @@ class SpareUsed(BaseModel):
 class Breakdown(BaseDoc):
     ticket_no: str
     plant_id: str
+    department: Department = Department.process
     line_id: str
     machine_id: str
     reported_by: str
