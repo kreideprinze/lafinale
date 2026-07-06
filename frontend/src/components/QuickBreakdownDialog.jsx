@@ -52,7 +52,7 @@ export default function QuickBreakdownDialog({ open, onClose, activeLine, presel
     setMachineId(preselectMachine?.id || null);
     setType("mechanical");
     setDesc("");
-    setReporter(user?.full_name || "");
+    setReporter("");
     setAutoWO(true);
     setErr("");
     setTicket(null);
@@ -216,7 +216,6 @@ export default function QuickBreakdownDialog({ open, onClose, activeLine, presel
                 data-testid="bd-reporter-name"
                 value={reporter}
                 onChange={(e) => setReporter(e.target.value)}
-                placeholder="e.g. Rajesh, Amit, Vikrant"
                 required
                 maxLength={80}
               />
