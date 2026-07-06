@@ -127,3 +127,35 @@ Build a production-grade, SCADA-styled, centralized live CMMS + Reliability Engi
 - `verify_install.sh` — 15-point health check (services, ports, HTTP endpoints, LAN reachability).
 - `.env.example` + `README.md` — full install/upgrade/backup guide.
 - Frontend uses same-origin URLs when `REACT_APP_BACKEND_URL` is empty — one URL `http://<HOST_IP>` for all users on the LAN, backend port `8001` bound to `127.0.0.1` only (hidden).
+
+
+### 2026-02-11 — Multi-Department + Bulk Runtime Import + Final Shift Purge
+**Multi-department architecture (Process / Packaging / Utilities)**
+- `production_lines`, `machines`, `breakdowns`, `work_orders` all carry `department`.
+- Seed script `/app/backend/seed_departments.py` + data at `factory_data_extra.py` populate Packaging (PC21..BCP dupes, palletizers PALLET-A..G) and Utilities lines.
+- Endpoints: `GET /api/departments`, `GET /api/lines?department=`, `GET /api/machines?department=`, `GET /api/analytics/department/{dept}/kpi`.
+- `GlobalFilterBar` now cascades Department → Area → Machine using native `<select>` (data-testids `flt-dept-select`, `flt-line-select`, `flt-machine-select`).
+- `AnalyticsPage` renders DEPARTMENT KPI panel (failures / downtime / MTTR / top causes / top equipment / monthly trend) when a department is chosen in the filter bar.
+
+**Shift tracking — FULLY REMOVED (per user request 2026-02-11)**
+- Frontend: removed SHIFT `<FilterCell>` from `GlobalFilterBar.jsx`, removed `shift` / `setShift` from `FilterContext.jsx`, deleted `_shiftFilter` from `BreakdownsPage.jsx`.
+- Backend: no shift field on any model or endpoint. Unknown `?shift=` query params are silently ignored (harmless).
+- System now supports only Department, Area, Equipment, and Date filters.
+
+**Bulk Runtime CSV Import** (`/admin/runtime-import` — admin only)
+- Backend endpoints:
+  - `GET  /api/runtime/bulk-import/template` — downloads header + example row
+  - `POST /api/runtime/bulk-import/dry-run` — multipart CSV upload, returns per-row validation summary (valid/errors/duplicates/would_insert/would_update/sample)
+  - `POST /api/runtime/bulk-import/commit` — actually inserts or upserts by `(line_id, date)`
+- CSV columns: `line_code` (req), `department` (optional — required only when a line code is duplicated across departments, e.g. PC21), `date` (YYYY-MM-DD | DD-MM-YYYY | DD/MM/YYYY), `calendar_hours`, `dark_hours`, `run_time_hours`, `notes`.
+- Validation: unknown line, invalid date, negative hours, run > calendar, ambiguous line without dept.
+- Frontend UI: DRY RUN preview → COMMIT enabled only when errors=0. Shows insert/update/error counts and first-N error list.
+
+**Regression tests**: `/app/backend/tests/backend_test.py` — 21 pytest cases (auth, cascading filters, dept KPI, bulk-import dry-run/commit/template) — 21/21 pass.
+
+## Backlog (P1 / P2)
+- P1: PDF export of Department KPI panel
+- P1: Availability report combining runtime_logs + breakdowns per department per month
+- P2: Bulk CSV import for machines and failure-modes (same UX as runtime import)
+- P2: Refactor N+1 Mongo lookups in `bulk_runtime_dry_run`/`commit` (do one bulk `$or` find instead of per-row `find_one`) — flagged by testing agent, acceptable for now at ≤1000-row CSVs.
+- P2: Cleanup React hydration warning `<span> cannot be a child of <option>` (editor instrumentation, non-blocking).

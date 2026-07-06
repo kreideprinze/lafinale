@@ -74,12 +74,12 @@ class TestMasters:
     def test_lines_have_department(self, lines):
         assert len(lines) > 0
         # Each line must have a department to enable cascading
-        for l in lines:
-            assert l.get("department"), f"Line {l.get('code')} missing department"
+        for ln in lines:
+            assert ln.get("department"), f"Line {ln.get('code')} missing department"
 
     def test_lines_pc21_exists_in_both_departments(self, lines):
-        pc21 = [l for l in lines if l.get("code") == "PC21"]
-        depts = {l.get("department") for l in pc21}
+        pc21 = [ln for ln in lines if ln.get("code") == "PC21"]
+        depts = {ln.get("department") for ln in pc21}
         # Test expects PC21 to be ambiguous — exists in both process AND packaging
         assert "process" in depts and "packaging" in depts, (
             f"PC21 should exist in both process AND packaging depts for ambiguity test. Got: {depts}"
@@ -155,8 +155,8 @@ class TestRuntimeBulkImport:
     def test_dry_run_valid_csv(self, admin_session, lines):
         # Pick a line code that exists only once (not PC21)
         code_counts: dict = {}
-        for l in lines:
-            code_counts[l["code"]] = code_counts.get(l["code"], 0) + 1
+        for ln in lines:
+            code_counts[ln["code"]] = code_counts.get(ln["code"], 0) + 1
         # Prefer a code that occurs only once
         unique_codes = [c for c, n in code_counts.items() if n == 1]
         assert unique_codes, "Need at least one uniquely-scoped line code for test"
@@ -234,8 +234,8 @@ class TestRuntimeBulkImport:
     def test_commit_inserts_and_updates(self, admin_session, lines):
         # Pick a unique line
         code_counts: dict = {}
-        for l in lines:
-            code_counts[l["code"]] = code_counts.get(l["code"], 0) + 1
+        for ln in lines:
+            code_counts[ln["code"]] = code_counts.get(ln["code"], 0) + 1
         unique_codes = [c for c, n in code_counts.items() if n == 1]
         test_code = unique_codes[0]
 
@@ -269,7 +269,7 @@ class TestRuntimeBulkImport:
 
         # Verify persistence via GET
         # Find line_id
-        line_id = next(l["id"] for l in lines if l["code"] == test_code)
+        line_id = next(ln["id"] for ln in lines if ln["code"] == test_code)
         gr = admin_session.get(f"{BASE_URL}/api/runtime?line_id={line_id}&date_from=2026-03-01&date_to=2026-03-02")
         assert gr.status_code == 200
         found = {r["date"]: r for r in gr.json()["data"]}
